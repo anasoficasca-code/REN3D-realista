@@ -10,6 +10,13 @@ Web: https://anasoficasca-code.github.io/REN3D-realista/
 - **Maqueta 3D**: el modelo propio de Kennedy (edificios, árboles, agua, carros, aves) heredado de REN3D.
 - **Noche** y **JUGAR** (modo pájaro y VR) siguen igual que en REN3D.
 
+## Aspecto "render"
+
+- **Maqueta 3D** (vista principal): fachadas con ventanas y losas, paleta residencial, techos propios y, en PC, posproceso (MSAA, oclusión ambiental GTAO, bloom suave, gradación y tono ACES). `?post=0` lo apaga.
+- La cadena de posproceso (`data3d/postfx.js`) está basada en [hotel-la-fontana-masterplan](https://github.com/alejagoguti-cpu/hotel-la-fontana-masterplan) (`src/scene/PostFX.js`).
+- En GPU integrada se desactiva la oclusión ambiental y en celular no hay posproceso, para mantener la fluidez.
+- **Estudio** pide una vez el token de Cesium ion y lo guarda solo en el navegador (o `?ion=TOKEN`).
+
 ## Requisitos de la API de Google
 
 - Usa la **Map Tiles API** con la llave `GKEY` de `index.html`.
