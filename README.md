@@ -1,32 +1,34 @@
-# REN3D realista · Kennedy
+# REN3D realista · Maqueta de Kennedy
 
-Copia de [REN3D](https://anasoficasca-code.github.io/REN3D/) cuyo modo principal es una **malla fotorrealista real** del territorio de Kennedy (Google Photorealistic 3D Tiles sobre CesiumJS), con los puntos del territorio como marcadores clicables.
+Maqueta 3D de Kennedy (Bogotá) sobre la **malla fotorrealista de Google** (Google Photorealistic 3D Tiles), cargada dentro de la misma escena Three.js que el modelo propio.
 
 Web: https://anasoficasca-code.github.io/REN3D-realista/
 
-## Modos
+## Qué es cada cosa
 
-- **Realista** (por defecto): malla 3D de Google, arrastrar para orbitar, rueda o pellizco para zoom, W A S D para volar. Tocar un marcador lleva la cámara a ese punto.
-- **Maqueta 3D**: el modelo propio de Kennedy (edificios, árboles, agua, carros, aves) heredado de REN3D.
-- **Noche** y **JUGAR** (modo pájaro y VR) siguen igual que en REN3D.
+- **Edificios, techos, calles, suelo y agua:** vienen de la malla de Google. Cada fachada y cada techo trae su foto real (fotogrametría aérea). No se dibujan edificios de cajas ni suelo plano.
+- **Sobre la malla vive el modelo propio:** árboles 3D reales con niveles de detalle (`data3d/real3d.js`), carros con las trayectorias reales de `kennedy_vehiculos.json`, peatones y aves de los humedales.
+- **Alineación:** el modelo de Rhino se georreferenció contra las calles de OpenStreetMap (solo traslación, sin giro ni inversión, error de pocos metros; ver `GEO` en `index.html`). La malla de Google se coloca en ese mismo sistema y se calibra al suelo midiendo su altura real alrededor de la cámara.
+- **Botones:** Maqueta 3D, Noche y JUGAR (modo pájaro y VR).
 
-## Aspecto "render"
+## Límites conocidos
 
-- **Maqueta 3D** (vista principal): fachadas con ventanas y losas, paleta residencial, techos propios y, en PC, posproceso (MSAA, oclusión ambiental GTAO, bloom suave, gradación y tono ACES). `?post=0` lo apaga.
-- La cadena de posproceso (`data3d/postfx.js`) está basada en [hotel-la-fontana-masterplan](https://github.com/alejagoguti-cpu/hotel-la-fontana-masterplan) (`src/scene/PostFX.js`).
-- En GPU integrada se desactiva la oclusión ambiental y en celular no hay posproceso, para mantener la fluidez.
-- **Estudio** pide una vez el token de Cesium ion y lo guarda solo en el navegador (o `?ion=TOKEN`).
+- La malla de Google es fotogrametría aérea: a nivel de calle las fachadas se ven borrosas y más aún en zonas de poca resolución. No se usan fotos de Street View: su licencia no permite descargarlas ni convertirlas en texturas.
+- Los carros, árboles y peatones se asientan a una altura de suelo constante; donde el terreno fotográfico se desvía unos metros pueden quedar ligeramente hundidos o flotando.
+- La malla de Google no se puede editar.
 
-## Requisitos de la API de Google
+## Google Map Tiles API
 
-- Usa la **Map Tiles API** con la llave `GKEY` de `index.html`.
-- Debe mostrarse la atribución de Google (Cesium la dibuja abajo a la izquierda); no se debe ocultar.
+- Llave `GKEY` en `index.html`, con **Map Tiles API** habilitada.
+- La atribución de Google se muestra abajo a la izquierda y no debe ocultarse.
 - Recomendado: en Google Cloud, restringir la llave por referente HTTP a `anasoficasca-code.github.io/*` y a esa sola API.
+- Las teselas no se descargan ni se guardan en el repo: se piden en vivo.
 
-## Calidad
+## Técnica
 
-- PC: resolución nativa, MSAA x4, error de pantalla 6 px.
-- Celular: resolución limitada a 1,5x, sin MSAA, error de pantalla 20 px.
+- Three.js 0.160 y [3d-tiles-renderer](https://github.com/NASA-AMMOS/3DTilesRendererJS) 0.3.45 (plugins `GoogleCloudAuthPlugin` y `GLTFExtensionsPlugin`, decodificación Draco).
+- Las teselas se muestran sin iluminar (la foto ya trae su luz) y con tono sin comprimir; en modo noche se oscurecen.
+- Calidad: PC con error de pantalla 8 px; celular 22 px.
 
 ## Publicar
 
