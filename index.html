@@ -475,7 +475,6 @@ map.on('load', () => {
   POIS.forEach((p, i) => addPin(p, i));
   buildPoiList();
   $('o-st').textContent = 'satélite + 3D listo';
-  $('loader').classList.add('hidden');
   say('🗺️ Territorio de Kennedy cargado · ' + POIS.length + ' puntos de misión');
   tick();
   init3D();
@@ -984,7 +983,12 @@ async function initTodoReal() {
       AVES = { grp: api.grp, nuevo: api };
       if (!$('b-aves').classList.contains('on')) api.grp.visible = false;
     }).catch(e => { console.warn('aves 3D:', e); buildAves(THREE); });
-    $('loader').classList.add('hidden');
+    // la pantalla de carga se queda hasta que baje la primera malla con detalle (máximo 45 s): así no se ve la capa gruesa y plana
+    $('lmsg').textContent = 'Descargando las fotos reales de Kennedy…';
+    { const t0 = performance.now(), iv = setInterval(() => {
+        const st = T3.tiles && T3.tiles.stats;
+        if (!st || (st.downloading === 0 && st.parsing === 0 && st.visible > 20) || performance.now() - t0 > 45000) { clearInterval(iv); $('loader').classList.add('hidden'); }
+      }, 400); }
     say('🧱 TODO 3D listo · ' + B.length.toLocaleString('es-CO') + ' edificios · cargando árboles 3D y tráfico…', 5000);
     // 2) lo pesado se carga después, en segundo plano y sin bloquear (si algo falla queda lo liviano)
     const pastoRespaldo = () => {
