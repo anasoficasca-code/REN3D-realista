@@ -169,7 +169,7 @@ const KENNEDY = { lng: -74.1620, lat: 4.6252, zoom: 14.2, pitch: 62, bearing: -1
 const INICIO = { lng: -74.1630, lat: 4.6210, zoom: 17.3, pitch: 68, bearing: -18 };
 
 const POIS = [
-  { n: 'Humedal El Burro',        lng: -74.1706, lat: 4.6382, z: 17.2, d: 'Reserva de humedal y aves', L: [7437, 3271], vista: [230, 120, -290], mira: [15, 15] },
+  { n: 'Humedal El Burro',        lng: -74.1706, lat: 4.6382, z: 17.2, d: 'Reserva de humedal y aves', L: [7437, 3271], vista: [-60, 190, 360], mira: [140, -330] },
   { n: 'Parque Timiza',           lng: -74.1626, lat: 4.6216, z: 17.0, d: 'Lago y zona recreativa', L: [7008, -326] },
   { n: 'Plaza de las Américas',   lng: -74.1700, lat: 4.6192, z: 17.4, d: 'Nodo urbano y comercio' },
   { n: 'Portal 80',               lng: -74.1505, lat: 4.6424, z: 17.0, d: 'Portal del sistema masivo' },
@@ -802,7 +802,15 @@ async function crearMallaGoogle(T) {
   tiles.registerPlugin(new PL.GLTFExtensionsPlugin({ dracoLoader: draco }));
   tiles.setCamera(T.camera);
   tiles.setResolutionFromRenderer(T.camera, T.renderer);
-  tiles.errorTarget = T.movil ? 22 : 8; // menor = más nítido (fachadas); el plugin de Google lo deja en 40
+  // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
+  T.errMeta = T.movil ? 28 : 14; // meta: menor = más nítido (fachadas) pero más descarga
+  tiles.errorTarget = 56;
+  T.tilesErr = 0;
+  tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
+    T.tilesErr++;
+    if (T.tilesErr === 1 || T.tilesErr === 20) say('⚠️ Google no entregó algunas teselas: ' + String(e && e.error && e.error.message || e && e.url || 'error de red').slice(0, 110), 7000);
+    console.warn('tesela con error:', e && e.error && e.error.message);
+  });
   tiles.group.matrixAutoUpdate = false;
   // ECEF -> escena: x = este, y = arriba, z = sur (igual que lw()). Origen de la escena = (LC.x, LC.y) del modelo, georreferenciado con GEO
   const q = dataToLL(LC.x, LC.y), D2R = Math.PI / 180;
@@ -824,6 +832,11 @@ async function crearMallaGoogle(T) {
   });
   T.tiles = tiles;
   T.scene.add(tiles.group);
+  if (new URLSearchParams(location.search).get('debug') === '1') { // ?debug=1: estado de la malla en pantalla
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:8px;top:8px;z-index:30;font:11px ui-monospace,monospace;color:#7dd3fc;background:rgba(5,10,16,.8);padding:6px 9px;border-radius:6px;max-width:92vw';
+    document.body.appendChild(d); T.debug = d;
+  }
   // sombras de carros y árboles sobre el suelo fotográfico
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = -0.2; sh.receiveShadow = true; sh.renderOrder = 2;
@@ -863,9 +876,20 @@ function luzMalla(T, k) {
 }
 function actualizarMalla(T, dt) {
   const tl = T.tiles; if (!tl) return;
+  try { actualizarMallaIn(T, tl, dt); }
+  catch (e) { // un fallo de la malla nunca debe congelar el resto de la escena
+    if (!T.mallaFallo) { T.mallaFallo = true; console.warn('malla:', e); say('⚠️ Error en la malla fotorrealista: ' + String(e && e.message || e).slice(0, 100), 8000); }
+  }
+}
+function actualizarMallaIn(T, tl, dt) {
   tl.setResolutionFromRenderer(T.camera, T.renderer);
   T.camera.updateMatrixWorld();
   tl.update();
+  if (tl.errorTarget > T.errMeta && tl.stats.downloading === 0 && tl.stats.parsing === 0 && tl.stats.visible > 3) tl.errorTarget = Math.max(T.errMeta, Math.round(tl.errorTarget * 0.62));
+  if (T.debug) {
+    const s = tl.stats; let mallas = 0; tl.group.traverse(x => { if (x.isMesh) mallas++; });
+    T.debug.textContent = 'malla: ' + s.visible + ' visibles · ' + mallas + ' mallas · ' + s.downloading + ' descargando · ' + s.parsing + ' procesando · ' + T.tilesErr + ' errores · error objetivo ' + tl.errorTarget + ' px · dy=' + T.tilesDy.toFixed(1) + ' m · cámara y=' + Math.round(T.camera.position.y) + ' m';
+  }
   const o = T.orbit.target;
   if (T.sombra) T.sombra.position.set(Math.round(o.x / 40) * 40, -0.2, Math.round(o.z / 40) * 40);
   T.tilesT += dt;
@@ -957,6 +981,7 @@ async function initTodoReal() {
     $('lmsg').textContent = 'Cargando la malla fotorrealista de Kennedy…';
     try { await crearMallaGoogle(T3); } catch (e) { console.warn('malla de Google:', e); T3.tiles = null; say('⚠️ No cargó la malla fotorrealista: ' + String(e && e.message || e).slice(0, 100), 6000); }
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
+    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: solo la malla, sin árboles ni carros
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
     try { T3.R = await import('./data3d/real3d.js?v=43'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
 
