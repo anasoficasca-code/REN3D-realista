@@ -6,13 +6,16 @@ Web: https://anasoficasca-code.github.io/REN3D-realista/
 
 ## Qué es cada cosa
 
-- **Edificios, techos, calles, suelo y agua:** vienen de la malla de Google. Cada fachada y cada techo trae su foto real (fotogrametría aérea). No se dibujan edificios de cajas ni suelo plano.
-- **Sobre la malla vive el modelo propio:** árboles 3D reales con niveles de detalle (`data3d/real3d.js`), carros con las trayectorias reales de `kennedy_vehiculos.json`, peatones y aves de los humedales.
+- **Suelo, calles, agua y vegetación:** vienen de la malla de Google (foto real, fotogrametría aérea).
+- **Edificios:** son los del modelo propio (`data3d/buildings.json`, 243 mil huellas con altura), con volumen limpio y fachadas con ventanas, paleta residencial y techos. Donde hay un edificio del modelo, la geometría "derretida" que levanta Google se recorta en el shader con una máscara de huellas (`construirMascara`), y queda solo su foto del suelo.
+- **Sobre la malla vive el resto del modelo propio:** árboles 3D reales con niveles de detalle (`data3d/real3d.js`), carros con las trayectorias reales de `kennedy_vehiculos.json`, peatones y aves de los humedales.
 - **Alineación:** el modelo de Rhino se georreferenció contra las calles de OpenStreetMap (solo traslación, sin giro ni inversión, error de pocos metros; ver `GEO` en `index.html`). La malla de Google se coloca en ese mismo sistema y se calibra al suelo midiendo su altura real alrededor de la cámara.
 - **Botones:** Maqueta 3D, Noche y JUGAR (modo pájaro y VR).
 
 ## Límites conocidos
 
+- Las fachadas de los edificios del modelo son procedurales (ventanas dibujadas por código), no fotos de cada fachada.
+- Modo de diagnóstico: `?debug=1` muestra el estado de la malla; `?solo=malla` omite árboles y carros (para probar en equipos lentos).
 - La malla de Google es fotogrametría aérea: a nivel de calle las fachadas se ven borrosas y más aún en zonas de poca resolución. No se usan fotos de Street View: su licencia no permite descargarlas ni convertirlas en texturas.
 - Los carros, árboles y peatones se asientan a una altura de suelo constante; donde el terreno fotográfico se desvía unos metros pueden quedar ligeramente hundidos o flotando.
 - La malla de Google no se puede editar.

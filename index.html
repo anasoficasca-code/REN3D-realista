@@ -505,7 +505,7 @@ let idx = 0;
 const GKEY = 'AIzaSyCF2MXjc0DYRFrHk7j_BCyxVpWOdYqDIC4';
 // Georreferencia del modelo de Rhino: coordenadas locales (m) -> lng/lat reales. Ajuste por correlación de la red de vías contra OpenStreetMap
 // (solo traslación; sin giro ni inversión; error de pocos metros). La malla de Google se alinea con esto.
-const GEO = { LAT0: 4.63, LNG0: -74.17, EX: -5196.24, EY: -2090.06 };
+const GEO = { LAT0: 4.63, LNG0: -74.17, EX: -5193.24, EY: -2090.06 }; // afinado a 1,5 m contra las vías de OSM
 const MXg = 111320 * Math.cos(GEO.LAT0 * Math.PI / 180), MYg = 110540;
 const dataToLL = (x, y) => [GEO.LNG0 + (x + GEO.EX) / MXg, GEO.LAT0 + (y + GEO.EY) / MYg]; // [lng, lat]
 let mode = 'todo';
@@ -821,10 +821,30 @@ async function crearMallaGoogle(T) {
   T.tilesDy = 0; T.tilesLuz = 1; T.tilesCalib = 0; T.tilesT = 0; T.tilesAtrib = 0;
   aplicarMalla(T, tiles);
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
+  // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
+  T.maskU = { uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 } };
+  const recorte = (m) => {
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, T.maskU);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPm = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim;')
+        .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
+          if (uOn > 0.5 && vWPm.y > uCut) {
+            vec2 mu = vec2((vWPm.x + uLC.x) * uDim.x, 1.0 - (uLC.y - vWPm.z) * uDim.y);
+            if (mu.x > 0.0 && mu.x < 1.0 && mu.y > 0.0 && mu.y < 1.0 && texture2D(uMask, mu).r < 0.5) discard;
+          }`);
+    };
+    m.customProgramCacheKey = () => 'recorteHuellas';
+    m.needsUpdate = true;
+  };
   tiles.addEventListener('load-model', ({ scene }) => {
     scene.traverse(c => {
       const m = c.isMesh && c.material;
       if (!m || !m.map) return;
+      recorte(m);
       if (m.isMeshBasicMaterial) { m.color.setScalar(T.tilesLuz); m.toneMapped = false; } // los materiales de Google ya vienen sin luz
       else { m.emissiveMap = m.map; m.emissive.setScalar(T.tilesLuz); m.color.setScalar(0); m.roughness = 1; m.metalness = 0; m.toneMapped = false; m.needsUpdate = true; }
       c.castShadow = false; c.receiveShadow = false;
@@ -837,10 +857,40 @@ async function crearMallaGoogle(T) {
     d.style.cssText = 'position:fixed;left:8px;top:8px;z-index:30;font:11px ui-monospace,monospace;color:#7dd3fc;background:rgba(5,10,16,.8);padding:6px 9px;border-radius:6px;max-width:92vw';
     document.body.appendChild(d); T.debug = d;
   }
+  // suelo base neutro bajo la foto: donde se recorta un edificio de Google no hay suelo debajo y se vería el cielo
+  const gb = new THREE.Mesh(new THREE.PlaneGeometry(14000, 10000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
+  gb.rotation.x = -Math.PI / 2; gb.position.y = -0.95; T.sueloBase = gb; T.scene.add(gb);
   // sombras de carros y árboles sobre el suelo fotográfico
   const sh = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
   sh.rotation.x = -Math.PI / 2; sh.position.y = -0.2; sh.receiveShadow = true; sh.renderOrder = 2;
   T.sombra = sh; T.scene.add(sh);
+}
+// huellas de los edificios del modelo dibujadas en un lienzo (blanco = libre, negro = edificio) en coordenadas del modelo, norte arriba
+const MASK = { XM: 10800, YM: 6400, RES: 2.5 };
+async function construirMascara(T, B) {
+  const THREE = T.THREE, W = Math.ceil(MASK.XM / MASK.RES), H = Math.ceil(MASK.YM / MASK.RES), R = MASK.RES;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineWidth = 2; g.lineJoin = 'round'; // el trazo agranda cada huella ~2,5 m
+  for (let s = 0; s < B.length; s += 12000) { // por lotes: no congela la página con los 243 mil edificios
+    g.beginPath();
+    for (let k = s; k < Math.min(B.length, s + 12000); k++) {
+      const b = B[k], p = b.pts; if (p.length < 4) continue;
+      let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+      for (let i = 0; i < p.length - 1; i++) { const q = p[i]; if (q[0] < minx) minx = q[0]; if (q[0] > maxx) maxx = q[0]; if (q[1] < miny) miny = q[1]; if (q[1] > maxy) maxy = q[1]; }
+      if ((maxx - minx) < 2 && (maxy - miny) < 2 && b.h <= 3) continue; // misma basura que buildChunks descarta
+      g.moveTo(p[0][0] / R, (MASK.YM - p[0][1]) / R);
+      for (let i = 1; i < p.length; i++) g.lineTo(p[i][0] / R, (MASK.YM - p[i][1]) / R);
+      g.closePath();
+    }
+    g.fill(); g.stroke();
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+  tex.colorSpace = THREE.NoColorSpace; tex.needsUpdate = true;
+  T.maskU.uMask.value = tex; T.maskU.uOn.value = 1;
 }
 function aplicarMalla(T, tiles) {
   const tl = tiles || T.tiles;
@@ -853,22 +903,22 @@ function calibrarMalla(T) {
   if (st.downloading > 0 || st.parsing > 0) return false; // las teselas gruesas (baja resolución) tienen kilómetros de error: se mide solo con el detalle ya cargado
   const THREE = T.THREE, rc = new THREE.Raycaster(), o = T.orbit.target, hits = [];
   rc.firstHitOnly = true;
-  for (const r of [0, 90, 200]) for (let a = 0; a < (r ? 6 : 1); a++) {
-    rc.set(new THREE.Vector3(o.x + r * Math.cos(a * 1.047), 800, o.z + r * Math.sin(a * 1.047)), new THREE.Vector3(0, -1, 0));
+  // muchos puntos y percentil BAJO: los techos y las copas quedan arriba, el suelo abajo (la mediana medía los techos y hundía la malla 19 m)
+  for (const r of [0, 100, 200, 320]) for (let a = 0; a < (r ? 8 : 1); a++) {
+    rc.set(new THREE.Vector3(o.x + r * Math.cos(a * 0.785), 800, o.z + r * Math.sin(a * 0.785)), new THREE.Vector3(0, -1, 0));
     const h = rc.intersectObject(T.tiles.group, true)[0];
-    if (h && Math.abs(h.point.y) < 150) hits.push(h.point.y);
+    if (h && Math.abs(h.point.y) < 40) hits.push(h.point.y);
   }
-  if (hits.length < 4) return false;
+  if (hits.length < 10) return false;
   hits.sort((a, b) => a - b);
-  const dy = T.tilesDy + (-0.5 - hits[hits.length >> 1]);
-  if (Math.abs(dy) > 150) return false; // valor absurdo: se ignora
-  T.tilesDy = dy;
-  aplicarMalla(T);
+  const dy = T.tilesDy + (-0.5 - hits[Math.floor(hits.length * 0.15)]);
+  if (Math.abs(dy) <= 4) { T.tilesDy = dy; aplicarMalla(T); } // la altura base (2.548 m) ya está medida: solo se aceptan correcciones pequeñas
   return true;
 }
 function luzMalla(T, k) {
   if (!T || !T.tiles) return;
   T.tilesLuz = k;
+  if (T.sueloBase) T.sueloBase.material.color.setHex(0x77746a).multiplyScalar(k);
   T.tiles.group.traverse(c => {
     const m = c.isMesh && c.material; if (!m || !m.map && !m.emissiveMap) return;
     if (m.isMeshBasicMaterial) m.color.setScalar(k); else if (m.emissive) m.emissive.setScalar(k);
@@ -981,11 +1031,17 @@ async function initTodoReal() {
     $('lmsg').textContent = 'Cargando la malla fotorrealista de Kennedy…';
     try { await crearMallaGoogle(T3); } catch (e) { console.warn('malla de Google:', e); T3.tiles = null; say('⚠️ No cargó la malla fotorrealista: ' + String(e && e.message || e).slice(0, 100), 6000); }
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
-    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: solo la malla, sin árboles ni carros
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
     try { T3.R = await import('./data3d/real3d.js?v=43'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
 
-    const B = [];
+    // edificios del modelo propio: volumen limpio con huellas y alturas reales, sobre el suelo fotográfico de Google
+    $('lmsg').textContent = 'Cargando edificios del modelo…';
+    const B = (LIVIANO && !MEDIO) ? [] : await fetchProg(LIVIANO ? 'data3d/buildings_humedal.json' : 'data3d/buildings.json', 'Edificios');
+    $('lmsg').textContent = 'Levantando ' + B.length.toLocaleString('es-CO') + ' edificios…';
+    await new Promise(r => setTimeout(r, 30));
+    buildChunks(THREE, B);
+    if (T3.tiles && B.length) construirMascara(T3, B).catch(e => console.warn('máscara de huellas:', e));
+    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: malla y edificios, sin árboles ni carros
     $('lmsg').textContent = 'Cargando árboles del censo…';
     const T = await fetchProg('data3d/trees.json', 'Árboles');
     $('lmsg').textContent = 'Cargando aguas, parques y vías…';
@@ -1114,7 +1170,7 @@ function buildChunks(THREE, B) {
       cx /= n; cz /= n;
       const base = vc;
       for (let i = 0; i < n; i++) {
-        P.push(W[i][0], 0, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); BH.push(h); vc++; // base más oscura (oclusión ambiental falsa): los edificios se asientan en el suelo
+        P.push(W[i][0], -1.2, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); BH.push(h); vc++; // base más oscura (oclusión ambiental falsa): los edificios se asientan en el suelo
       }
       for (let i = 0; i < n; i++) {
         P.push(W[i][0], h, W[i][1]); C.push(col.w[0], col.w[1], col.w[2]); BH.push(h); vc++;
