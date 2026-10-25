@@ -325,14 +325,16 @@ export async function buildTrees(T3, T, W, lw, env, Pq, Net) {
   }
   const N = X.length, ROT = new Float32Array(N); for (let i = 0; i < N; i++) ROT[i] = hash(i * 41 + 11) * Math.PI * 2;
   const especies = [], MV = !!T3.movil; // celular: sólo el modelo reducido de cada árbol (se descarga mucho menos)
-  for (const E of ESPECIES_ARBOL) {
-    const niveles = {};
-    for (const nv of MV ? ['L1'] : ['L0', 'L1']) {
-      const partes = [];
-      const gs = await Promise.all(['madera', 'hojas'].map(parte => gltfLoader.loadAsync(`data3d/models/${E.base}_${nv}_${parte}.glb`))); // madera y hojas se descargan a la vez
+  const NIVELES = MV ? ['L1'] : ['L0', 'L1'];
+  // todas las especies, niveles y partes se descargan A LA VEZ (antes era una tras otra: 8 esperas seguidas)
+  const cargas = await Promise.all(ESPECIES_ARBOL.map(E => Promise.all(NIVELES.map(nv => Promise.all(['madera', 'hojas'].map(parte => gltfLoader.loadAsync(`data3d/models/${E.base}_${nv}_${parte}.glb`)))))));
+  for (let ei = 0; ei < ESPECIES_ARBOL.length; ei++) {
+    const E = ESPECIES_ARBOL[ei], niveles = {};
+    NIVELES.forEach((nv, li) => {
+      const partes = [], gs = cargas[ei][li];
       ['madera', 'hojas'].forEach((parte, k) => partes.push(...recolectar(gs[k].scene).map(p => ({ ...p, hoja: parte === 'hojas' }))));
       niveles[nv] = partes;
-    }
+    });
     if (MV) niveles.L0 = niveles.L1;
     const b = cajaDe(niveles.L0), cx = (b.min.x + b.max.x) / 2, cz = (b.min.z + b.max.z) / 2, alto = b.max.y - b.min.y, ancho = Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
     for (const nv of MV ? ['L1'] : ['L0', 'L1']) niveles[nv].forEach(p => { p.geo.translate(-cx, -b.min.y, -cz); realzarMaterial(p.mat, env, p.hoja); });
