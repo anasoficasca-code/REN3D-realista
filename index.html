@@ -793,8 +793,7 @@ function initTodo() {
    sobre ella viven los carros, árboles, peatones y aves de la Maqueta. */
 async function crearMallaGoogle(T) {
   const THREE = T.THREE;
-  const TR = await import('3d-tiles-renderer');
-  const PL = await import('3d-tiles-renderer/plugins');
+  const [TR, PL] = await Promise.all([import('3d-tiles-renderer'), import('3d-tiles-renderer/plugins')]); // a la vez, no uno tras otro
   const { DRACOLoader } = await import('three/addons/loaders/DRACOLoader.js');
   const draco = new DRACOLoader().setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
   const tiles = new TR.TilesRenderer();
@@ -805,7 +804,7 @@ async function crearMallaGoogle(T) {
   // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
   T.errMeta = T.movil ? 28 : 14; // meta: menor = más nítido (fachadas) pero más descarga
   tiles.errorTarget = 56;
-  T.tilesErr = 0;
+  T.tilesErr = 0; T.tilesT0 = performance.now(); T.mallaMostrada = false;
   tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
     T.tilesErr++;
     if (T.tilesErr === 1 || T.tilesErr === 20) say('⚠️ Google no entregó algunas teselas: ' + String(e && e.error && e.error.message || e && e.url || 'error de red').slice(0, 110), 7000);
@@ -818,7 +817,8 @@ async function crearMallaGoogle(T) {
   TR.WGS84_ELLIPSOID.getEastNorthUpFrame(q[1] * D2R, q[0] * D2R, frame);
   frame.multiply(new THREE.Matrix4().makeTranslation(0, 0, 2548)); // altura elipsoidal medida del suelo de Kennedy; luego se calibra fino
   T.tilesM = new THREE.Matrix4().makeRotationX(-Math.PI / 2).multiply(frame.invert());
-  T.tilesDy = 0; T.tilesLuz = 1; T.tilesCalib = 0; T.tilesT = 0; T.tilesAtrib = 0;
+  T.sueloY = -1.8; // la foto del suelo queda ~2 m POR DEBAJO de las vías, el agua y los parques del modelo (y = 0): así ellos nunca quedan tapados por la foto
+  T.tilesDy = T.sueloY; T.tilesLuz = 1; T.tilesCalib = 0; T.tilesT = 0; T.tilesAtrib = 0;
   aplicarMalla(T, tiles);
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
   // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
@@ -848,6 +848,7 @@ async function crearMallaGoogle(T) {
       if (m.isMeshBasicMaterial) { m.color.setScalar(T.tilesLuz); m.toneMapped = false; } // los materiales de Google ya vienen sin luz
       else { m.emissiveMap = m.map; m.emissive.setScalar(T.tilesLuz); m.color.setScalar(0); m.roughness = 1; m.metalness = 0; m.toneMapped = false; m.needsUpdate = true; }
       c.castShadow = false; c.receiveShadow = false;
+      c.renderOrder = -10; // la foto de Google se dibuja ANTES que el modelo propio (ver el borrado de profundidad más abajo)
     });
   });
   T.tiles = tiles;
@@ -859,11 +860,11 @@ async function crearMallaGoogle(T) {
   }
   // suelo base neutro bajo la foto: donde se recorta un edificio de Google no hay suelo debajo y se vería el cielo
   const gb = new THREE.Mesh(new THREE.PlaneGeometry(14000, 10000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
-  gb.rotation.x = -Math.PI / 2; gb.position.y = -0.95; T.sueloBase = gb; T.scene.add(gb);
-  // sombras de carros y árboles sobre el suelo fotográfico
-  const sh = new THREE.Mesh(new THREE.PlaneGeometry(3200, 3200), new THREE.ShadowMaterial({ opacity: 0.32, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-  sh.rotation.x = -Math.PI / 2; sh.position.y = -0.2; sh.receiveShadow = true; sh.renderOrder = 2;
-  T.sombra = sh; T.scene.add(sh);
+  gb.rotation.x = -Math.PI / 2; gb.position.y = -2.9; gb.renderOrder = -20; T.sueloBase = gb; T.scene.add(gb);
+  // La foto de Google es solo el FONDO: tiene errores de altura de varios metros (copas y techos suben el suelo) y taparía las vías, el agua, los parques,
+  // los árboles y los carros del modelo. Tras dibujarla se borra la profundidad, así todo lo propio se ve siempre encima y se ordena solo entre sí.
+  const cd = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+  cd.frustumCulled = false; cd.renderOrder = -5; cd.onBeforeRender = (r) => r.clearDepth(); T.scene.add(cd);
 }
 // huellas de los edificios del modelo dibujadas en un lienzo (blanco = libre, negro = edificio) en coordenadas del modelo, norte arriba
 const MASK = { XM: 10800, YM: 6400, RES: 2.5 };
@@ -911,8 +912,8 @@ function calibrarMalla(T) {
   }
   if (hits.length < 10) return false;
   hits.sort((a, b) => a - b);
-  const dy = T.tilesDy + (-0.5 - hits[Math.floor(hits.length * 0.15)]);
-  if (Math.abs(dy) <= 4) { T.tilesDy = dy; aplicarMalla(T); } // la altura base (2.548 m) ya está medida: solo se aceptan correcciones pequeñas
+  const dy = T.tilesDy + (T.sueloY - hits[Math.floor(hits.length * 0.15)]);
+  if (Math.abs(dy - T.sueloY) <= 4) { T.tilesDy = dy; aplicarMalla(T); } // la altura base (2.548 m) ya está medida: solo se aceptan correcciones pequeñas
   return true;
 }
 function luzMalla(T, k) {
@@ -935,6 +936,11 @@ function actualizarMallaIn(T, tl, dt) {
   tl.setResolutionFromRenderer(T.camera, T.renderer);
   T.camera.updateMatrixWorld();
   tl.update();
+  if (!T.mallaMostrada) {
+    const st = tl.stats, listo = st.downloading === 0 && st.parsing === 0 && st.visible > 8;
+    if (listo || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; }
+    else tl.group.visible = false;
+  }
   if (tl.errorTarget > T.errMeta && tl.stats.downloading === 0 && tl.stats.parsing === 0 && tl.stats.visible > 3) tl.errorTarget = Math.max(T.errMeta, Math.round(tl.errorTarget * 0.62));
   if (T.debug) {
     const s = tl.stats; let mallas = 0; tl.group.traverse(x => { if (x.isMesh) mallas++; });
@@ -1005,7 +1011,7 @@ async function initTodoReal() {
           }`
       })
     );
-    sky.frustumCulled = false;
+    sky.frustumCulled = false; sky.renderOrder = -30; // el cielo se dibuja primero (la foto de Google y todo lo demás van encima)
     scene.add(sky);
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 40000);
     const tw = lw(7008, -326);
@@ -1024,38 +1030,46 @@ async function initTodoReal() {
     sun.shadow.camera.near = 100; sun.shadow.camera.far = 7000;
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.5; sun.shadow.radius = 2.5; // sombra pegada al objeto y con borde suave
     scene.add(hemi, sun, sun.target);
-    // el suelo y los edificios ya no se dibujan con datos propios: los trae la malla fotorrealista de Google (fotos reales de cada fachada y techo)
-    const suelo = null;
+    // materiales de suelo propios (concreto, pasto, vías y aceras con fotos reales): los usan las vías y los parques de la Maqueta
+    let suelo = null;
+    try { suelo = (await import('./data3d/materiales.js')).crearMaterialesSuelo(renderer); } catch (e) { console.warn('materiales:', e); }
     T3 = { THREE, renderer, scene, camera, orbit, hemi, sun, skyU, liviano: LIVIANO, movil: MOVIL, night: false, anim: null, last: 0, counts: {},
       waterU: { value: 0 }, sunOff: new THREE.Vector3(0.42, 0.62, 0.35).normalize().multiplyScalar(2600), suelo };
-    $('lmsg').textContent = 'Cargando la malla fotorrealista de Kennedy…';
-    try { await crearMallaGoogle(T3); } catch (e) { console.warn('malla de Google:', e); T3.tiles = null; say('⚠️ No cargó la malla fotorrealista: ' + String(e && e.message || e).slice(0, 100), 6000); }
+    if (suelo) suelo.cargar().catch(e => console.warn('texturas del suelo:', e));
+    // ARRANQUE RÁPIDO: todo se pide a la vez (antes era uno tras otro) y la foto de Google baja en segundo plano sin bloquear la pantalla de carga
+    const pB = (LIVIANO && !MEDIO) ? Promise.resolve([]) : fetchProg(LIVIANO ? 'data3d/buildings_humedal.json' : 'data3d/buildings.json', 'Edificios');
+    const pT = fetch('data3d/trees.json').then(r => r.json());
+    const pWPN = Promise.all([
+      fetch('data3d/water_bodies.json').then(r => r.json()),
+      fetch('data3d/parques.json').then(r => r.json()),
+      fetch('data3d/net.json').then(r => r.json())
+    ]);
+    const pMalla = crearMallaGoogle(T3).catch(e => { // sin la foto de Google queda el suelo de concreto de siempre
+      console.warn('malla de Google:', e); T3.tiles = null; say('⚠️ No cargó la foto del suelo: ' + String(e && e.message || e).slice(0, 100), 6000);
+      const gGeo = new THREE.PlaneGeometry(13000, 9500);
+      { const uv = gGeo.attributes.uv, ps = gGeo.attributes.position; for (let i = 0; i < uv.count; i++) uv.setXY(i, ps.getX(i) / 7, -ps.getY(i) / 7); }
+      const ground = new THREE.Mesh(gGeo, suelo ? suelo.piso : new THREE.MeshLambertMaterial({ color: 0x9a9a96 }));
+      ground.rotation.x = -Math.PI / 2; ground.position.y = -0.3; ground.receiveShadow = true; scene.add(ground);
+    });
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
     try { T3.R = await import('./data3d/real3d.js?v=43'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
 
     // edificios del modelo propio: volumen limpio con huellas y alturas reales, sobre el suelo fotográfico de Google
-    $('lmsg').textContent = 'Cargando edificios del modelo…';
-    const B = (LIVIANO && !MEDIO) ? [] : await fetchProg(LIVIANO ? 'data3d/buildings_humedal.json' : 'data3d/buildings.json', 'Edificios');
+    const B = await pB;
     $('lmsg').textContent = 'Levantando ' + B.length.toLocaleString('es-CO') + ' edificios…';
     await new Promise(r => setTimeout(r, 30));
     buildChunks(THREE, B);
-    if (T3.tiles && B.length) construirMascara(T3, B).catch(e => console.warn('máscara de huellas:', e));
-    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: malla y edificios, sin árboles ni carros
-    $('lmsg').textContent = 'Cargando árboles del censo…';
-    const T = await fetchProg('data3d/trees.json', 'Árboles');
-    $('lmsg').textContent = 'Cargando aguas, parques y vías…';
-    const [W, P, N] = await Promise.all([
-      fetch('data3d/water_bodies.json').then(r => r.json()),
-      fetch('data3d/parques.json').then(r => r.json()),
-      fetch('data3d/net.json').then(r => r.json())
-    ]);
+    pMalla.then(() => { if (T3.tiles && B.length) construirMascara(T3, B).catch(e => console.warn('máscara de huellas:', e)); });
+    const T = await pT;
+    const [W, P, N] = await pWPN;
     T3.net = N; // red de vías: el modo pájaro la usa para ubicar la avenida del humedal
     const realOK = !!(T3.R && T3.env);
     // 1) lo liviano primero, para que el mundo aparezca ya: árboles de planos cruzados, agua, parques (suelo de pasto), vías y aves
     // con los modelos reales NO se dibujan árboles de planos cruzados (se ven como imagen plana): sólo son el respaldo si fallan
     if (!realOK) await buildTreesReal(THREE, T);
-    // agua, parques y vías ya no se dibujan: la malla de Google los trae con su foto real; sus datos siguen guiando aves, árboles, peatones y carros
+    buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
+    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
     T3.avesU = { value: 0 }; T3.avesT = 0;
     // aves 3D (patos, fochas, garzas) repartidas por todos los humedales; si el módulo falla queda el modelo sencillo anterior
@@ -1064,12 +1078,7 @@ async function initTodoReal() {
       AVES = { grp: api.grp, nuevo: api };
       if (!$('b-aves').classList.contains('on')) api.grp.visible = false;
     }).catch(e => { console.warn('aves 3D:', e); buildAves(THREE); });
-    // la pantalla de carga se queda hasta que baje la primera malla con detalle (máximo 45 s): así no se ve la capa gruesa y plana
-    $('lmsg').textContent = 'Descargando las fotos reales de Kennedy…';
-    { const t0 = performance.now(), iv = setInterval(() => {
-        const st = T3.tiles && T3.tiles.stats;
-        if (!st || (st.downloading === 0 && st.parsing === 0 && st.visible > 20) || performance.now() - t0 > 45000) { clearInterval(iv); $('loader').classList.add('hidden'); }
-      }, 400); }
+    $('loader').classList.add('hidden'); // se abre en cuanto están los edificios y las capas; la foto de Google entra sola cuando termina de bajar
     say('🧱 TODO 3D listo · ' + B.length.toLocaleString('es-CO') + ' edificios · cargando árboles 3D y tráfico…', 5000);
     // 2) lo pesado se carga después, en segundo plano y sin bloquear (si algo falla queda lo liviano)
     const pastoRespaldo = () => {
@@ -1078,11 +1087,14 @@ async function initTodoReal() {
     };
     (async () => {
       if (!realOK) { pastoRespaldo(); return; }
+      try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
       } catch (e) { console.warn('arboles reales:', e); T3.trees = null; try { await buildTreesReal(THREE, T); } catch (e2) { console.warn('trees:', e2); } }
+      try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
+      catch (e) { console.warn('pasto 3D:', e); pastoRespaldo(); }
     })();
     if (!LIVIANO) (async () => {
       try { await buildTraffic(THREE); say('🚗 ' + TRAF.NV.toLocaleString('es-CO') + ' carros (' + Math.round(TRAF.dur) + 's de simulación)', 4000); }
@@ -1132,31 +1144,6 @@ function buildChunks(THREE, B) {
   // material físico mate, sin ventanas dibujadas: paredes lisas con un reflejo suave del ambiente
   const mat = LIVIANO ? new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true }) // gafas: material barato (sin reflejos ni sombras)
     : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true, roughness: 0.86, metalness: 0, envMap: T3.env || null, envMapIntensity: 0.55 });
-  // fachadas procedurales: ventanas, marcos y líneas de losa cada 3 m de altura; se desvanecen a la distancia para no hacer muaré
-  mat.onBeforeCompile = (sh) => {
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute float bh;\nvarying float vBH;\nvarying vec3 vWP;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBH = bh; vWP = (modelMatrix * vec4(position, 1.0)).xyz;');
-    sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vBH;\nvarying vec3 vWP;')
-      .replace('#include <color_fragment>', `#include <color_fragment>
-      { vec3 fn = normalize(cross(dFdx(vWP), dFdy(vWP)));
-        if (abs(fn.y) < 0.3 && vBH > 3.4 && vWP.y > 0.5) {
-          vec2 tg = normalize(vec2(-fn.z, fn.x));
-          vec2 cell = vec2(dot(vWP.xz, tg) / 3.4, vWP.y / 3.0);
-          vec2 f = fract(cell), id = floor(cell);
-          float hs = fract(sin(dot(id, vec2(12.9898, 78.233))) * 43758.5453);
-          float k = 1.0 - clamp(max(fwidth(cell.x), fwidth(cell.y)) * 1.6, 0.0, 1.0);
-          float top = step(vWP.y + 1.0, vBH);
-          float win = step(0.2, f.x) * step(f.x, 0.8) * step(0.28, f.y) * step(f.y, 0.80) * top;
-          float frame = step(0.14, f.x) * step(f.x, 0.86) * step(0.2, f.y) * step(f.y, 0.86) * top - win;
-          float slab = 1.0 - step(0.08, f.y);
-          vec3 glass = mix(vec3(0.07, 0.11, 0.15), vec3(0.34, 0.44, 0.52), hs * hs);
-          diffuseColor.rgb = mix(diffuseColor.rgb, glass, win * 0.92 * k);
-          diffuseColor.rgb *= 1.0 - 0.14 * frame * k;
-          diffuseColor.rgb *= 1.0 - 0.18 * slab * k;
-        } }`);
-  };
   if (!T3.edificios) T3.edificios = [];
   for (const list of cells.values()) {
     const P = [], C = [], I = [], BH = [];
@@ -1170,7 +1157,7 @@ function buildChunks(THREE, B) {
       cx /= n; cz /= n;
       const base = vc;
       for (let i = 0; i < n; i++) {
-        P.push(W[i][0], -1.2, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); BH.push(h); vc++; // base más oscura (oclusión ambiental falsa): los edificios se asientan en el suelo
+        P.push(W[i][0], -3.0, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); BH.push(h); vc++; // base más oscura (oclusión ambiental falsa): los edificios se asientan en el suelo
       }
       for (let i = 0; i < n; i++) {
         P.push(W[i][0], h, W[i][1]); C.push(col.w[0], col.w[1], col.w[2]); BH.push(h); vc++;
