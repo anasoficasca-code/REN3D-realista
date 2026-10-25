@@ -30,12 +30,59 @@
   canvas.splat-night{filter:brightness(.52) saturate(.65) contrast(1.06)!important}
   #grade{position:fixed;inset:0;pointer-events:none;z-index:5;
     background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 55%,rgba(2,6,12,.55) 100%)}
-  #loader{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;gap:16px;
-    align-items:center;justify-content:center;background:#070c14;transition:opacity .8s}
-  #loader.hidden{opacity:0;pointer-events:none}
-  .ring{width:52px;height:52px;border-radius:50%;border:3px solid rgba(56,189,248,.2);
-    border-top-color:#38bdf8;animation:sp 1s linear infinite}
+  /* ===== portada ===== */
+  #loader{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:#060b12;overflow:hidden;transition:opacity .9s ease,visibility .9s}
+  #loader.hidden{opacity:0;visibility:hidden;pointer-events:none}
+  .cv-bg{position:absolute;inset:-10%;background:radial-gradient(55% 45% at 72% 28%,rgba(56,189,248,.20),transparent 70%),radial-gradient(45% 40% at 18% 78%,rgba(52,211,153,.15),transparent 70%),#060b12;animation:cvDrift 16s ease-in-out infinite alternate}
+  .cv-grid{position:absolute;left:-30%;right:-30%;bottom:-8%;height:62%;background-image:linear-gradient(rgba(125,211,252,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(125,211,252,.10) 1px,transparent 1px);background-size:46px 46px;transform:perspective(520px) rotateX(62deg);transform-origin:50% 100%;animation:cvGrid 3.2s linear infinite;-webkit-mask-image:linear-gradient(to top,#000 15%,transparent 80%);mask-image:linear-gradient(to top,#000 15%,transparent 80%)}
+  .cv-city{position:absolute;left:0;right:0;bottom:0;height:38vh;display:flex;align-items:flex-end;gap:4px;padding:0 3vw;opacity:.6;-webkit-mask-image:linear-gradient(to top,#000 35%,transparent);mask-image:linear-gradient(to top,#000 35%,transparent);pointer-events:none}
+  .cv-city i{flex:1;border-radius:2px 2px 0 0;background:linear-gradient(to top,rgba(56,189,248,.34),rgba(56,189,248,.04));transform-origin:bottom;animation:cvRise 1.5s cubic-bezier(.2,.7,.2,1) both}
+  .cv-city i:nth-child(3n){background:linear-gradient(to top,rgba(52,211,153,.30),rgba(52,211,153,.03))}
+  .cv-card{position:relative;width:min(440px,calc(100vw - 32px));padding:28px 26px 22px;border-radius:18px;background:rgba(10,18,30,.66);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);border:1px solid rgba(125,211,252,.18);box-shadow:0 30px 80px rgba(0,0,0,.55);animation:cvIn .8s cubic-bezier(.2,.7,.2,1) both}
+  .cv-brand{display:flex;align-items:center;gap:10px;color:#7dd3fc;font-size:11px;font-weight:700;letter-spacing:.32em;text-transform:uppercase}
+  .cv-brand .ic{width:22px;height:22px;animation:cvSpin 9s linear infinite}
+  .cv-card h1{margin:14px 0 4px;font-size:34px;line-height:1.05;font-weight:800;letter-spacing:-.01em;color:#f1f7fd}
+  .cv-card h1 span{background:linear-gradient(100deg,#7dd3fc,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .cv-sub{color:#94a3b8;font-size:13px;margin-bottom:18px}
+  .cv-steps{list-style:none;display:grid;gap:8px;margin:0 0 18px;padding:0}
+  .cv-steps li{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);color:#9fb3c8;font-size:13px;transition:background .35s,border-color .35s,color .35s;animation:cvIn .6s cubic-bezier(.2,.7,.2,1) both}
+  .cv-steps li:nth-child(2){animation-delay:.07s}.cv-steps li:nth-child(3){animation-delay:.14s}.cv-steps li:nth-child(4){animation-delay:.21s}.cv-steps li:nth-child(5){animation-delay:.28s}
+  .cv-steps .ic{width:18px;height:18px;flex:none;color:#64748b;transition:color .35s}
+  .cv-steps .st{margin-left:auto;width:16px;height:16px;border-radius:50%;border:2px solid rgba(125,211,252,.30);border-top-color:#7dd3fc;animation:sp .9s linear infinite;position:relative;flex:none}
+  .cv-steps li.ok{color:#e2f3ff;background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.28)}
+  .cv-steps li.ok .ic{color:#34d399}
+  .cv-steps li.ok .st{animation:cvPop .35s ease both;border-color:#34d399;background:#34d399}
+  .cv-steps li.ok .st::after{content:'';position:absolute;left:4px;top:1px;width:4px;height:8px;border:solid #06281c;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .cv-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+  .cv-bar i{display:block;height:100%;width:6%;background:linear-gradient(90deg,#38bdf8,#34d399);border-radius:inherit;transition:width .5s ease;position:relative;overflow:hidden}
+  .cv-bar i::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:cvShine 1.3s linear infinite}
+  #lmsg{margin-top:10px;font-size:12px;color:#7dd3fc;min-height:16px}
   @keyframes sp{to{transform:rotate(360deg)}}
+  @keyframes cvSpin{to{transform:rotate(360deg)}}
+  @keyframes cvDrift{to{transform:translate3d(-3%,2%,0) scale(1.06)}}
+  @keyframes cvGrid{to{background-position:0 46px,0 0}}
+  @keyframes cvRise{from{transform:scaleY(0)}}
+  @keyframes cvIn{from{opacity:0;transform:translateY(14px)}}
+  @keyframes cvPop{0%{transform:scale(.6)}70%{transform:scale(1.15)}100%{transform:scale(1)}}
+  @keyframes cvShine{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+  @keyframes cvPulse{50%{opacity:.35}}
+  /* lo que sigue cargando, ya dentro de la maqueta */
+  #cvMini{position:fixed;top:14px;left:50%;transform:translate(-50%,-8px);z-index:19;display:flex;gap:4px;align-items:center;padding:6px 10px;border-radius:999px;background:rgba(8,16,26,.74);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(125,211,252,.25);color:#cfe7f7;font-size:12px;opacity:0;pointer-events:none;transition:opacity .5s,transform .5s;white-space:nowrap}
+  #cvMini.on{opacity:1;transform:translate(-50%,0)}
+  #cvMini span{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;color:#9fb3c8}
+  #cvMini .ic{width:14px;height:14px}
+  #cvMini span:not(.ok) .ic{animation:cvPulse 1.2s ease-in-out infinite;color:#7dd3fc}
+  #cvMini span.ok{color:#34d399}
+  /* marca y ayuda al entrar */
+  #cvMarca{position:fixed;top:14px;left:14px;z-index:18;display:flex;align-items:center;gap:10px;padding:9px 13px;border-radius:12px;background:rgba(8,16,26,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border:1px solid rgba(125,211,252,.2);color:#e2f3ff;opacity:0;transform:translateY(-8px);transition:opacity .6s,transform .6s;pointer-events:none}
+  #cvMarca.on{opacity:1;transform:none}
+  #cvMarca .ic{width:20px;height:20px;color:#7dd3fc}
+  #cvMarca b{font-size:13px;letter-spacing:.04em}
+  #cvMarca small{display:block;font-size:11px;color:#94a3b8;margin-top:2px}
+  #cvAyuda{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:18;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:rgba(8,16,26,.62);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:#cfe7f7;font-size:12px;opacity:0;transition:opacity .6s;pointer-events:none;white-space:nowrap}
+  #cvAyuda.on{opacity:1}
+  #cvAyuda .ic{width:16px;height:16px;color:#7dd3fc}
+  @media(max-width:700px){.cv-card{padding:22px 18px 18px}.cv-card h1{font-size:28px}#cvMarca small{display:none}#cvAyuda{bottom:84px;font-size:11px}#cvMini{top:70px;gap:2px;padding:6px 8px}#cvMini span{padding:2px 6px}#cvMini span b{display:none}}
   .hud{position:fixed;z-index:10;background:rgba(7,13,22,.88);backdrop-filter:blur(14px);
     border:1px solid rgba(56,189,248,.28);border-radius:12px;padding:12px 14px;
     box-shadow:0 10px 28px rgba(0,0,0,.55)}
@@ -83,8 +130,12 @@
   #hud-c #b-pajaro{padding:14px 54px;font-size:15px;letter-spacing:.32em;color:#04121c;background:linear-gradient(100deg,#7dd3fc,#34d399);box-shadow:none;transition:filter .15s,transform .15s}
   #hud-c #b-pajaro:hover{filter:brightness(1.12);transform:translateY(-2px);color:#04121c}
   #hud-c #b-night.on{color:#fde68a;box-shadow:inset 0 0 0 1px rgba(253,230,138,.55)}
-  @media(max-width:700px){#hud-c{bottom:max(18px,env(safe-area-inset-bottom));gap:8px;flex-wrap:wrap;justify-content:center}#hud-c button{padding:12px 14px;font-size:11px;letter-spacing:.12em}#hud-c #b-pajaro{padding:13px 34px;font-size:13px;letter-spacing:.24em}}
-  #hud-c button{white-space:nowrap}
+  @media(max-width:700px){#hud-c{bottom:max(16px,env(safe-area-inset-bottom));gap:6px;flex-wrap:nowrap;justify-content:center;width:calc(100vw - 24px)}#hud-c button{flex:1 1 auto;padding:12px 8px;font-size:10.5px;letter-spacing:.08em;gap:6px;clip-path:polygon(7px 0,100% 0,calc(100% - 7px) 100%,0 100%)}#hud-c #b-pajaro{padding:12px 10px;font-size:11.5px;letter-spacing:.16em}#hud-c .ic{width:15px;height:15px}}
+  #hud-c button{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:9px}
+  #hud-c .ic{width:16px;height:16px;flex:none}
+  #hud-c{animation:hudIn .7s .25s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes hudIn{from{opacity:0;transform:translate(-50%,24px)}to{opacity:1;transform:translate(-50%,0)}}
+  #toast{top:62px!important}
   #hud-c #b-todo.on{color:#04121c;background:linear-gradient(100deg,#bae6fd,#7dd3fc);box-shadow:none}
   #atrib{position:fixed;left:8px;bottom:4px;z-index:9;font-size:10px;color:#e8eef7;opacity:.85;text-shadow:0 1px 2px #000;pointer-events:none;max-width:70vw}
   #trafficHud{position:fixed;left:14px;bottom:64px;z-index:18;width:min(344px,44vw);padding:10px 14px;background:rgba(7,13,22,.92);border:1px solid rgba(56,189,248,.45);border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.5);color:#e8eef7;display:none}
@@ -102,10 +153,31 @@
 <div id="grade"></div>
 
 <div id="loader">
-  <div class="ring"></div>
-  <div style="font-weight:700;letter-spacing:1px">REN3D · KENNEDY 3D</div>
-  <div style="font-size:12px;color:#7dd3fc" id="lmsg">Cargando malla fotorrealista de Kennedy…</div>
+  <div class="cv-bg"></div>
+  <div class="cv-grid"></div>
+  <div class="cv-city" id="cvCity"></div>
+  <div class="cv-card">
+    <div class="cv-brand"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg><span>REN3D</span></div>
+    <h1>Kennedy <span>3D</span></h1>
+    <div class="cv-sub">Maqueta territorial de Kennedy · Bogotá</div>
+    <ul class="cv-steps">
+      <li data-k="edif"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5l8-3v19"/><path d="M12 21V9l8 3v9"/><path d="M8 7h.01M8 11h.01M8 15h.01M16 14h.01M16 18h.01"/><path d="M2 21h20"/></svg><span>Edificios</span><i class="st"></i></li>
+      <li data-k="capas"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span>Vías, agua y parques</span><i class="st"></i></li>
+      <li data-k="arboles"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19a4 4 0 0 1-2.24-7.32A3.5 3.5 0 0 1 9 6.03V6a3 3 0 1 1 6 0v.04a3.5 3.5 0 0 1 3.24 5.65A4 4 0 0 1 16 19Z"/><path d="M12 19v3"/></svg><span>Árboles</span><i class="st"></i></li>
+      <li data-k="trafico"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14"/><path d="M3 17v-4l2.5-5h13L21 13v4"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg><span>Tráfico</span><i class="st"></i></li>
+      <li data-k="foto"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><span>Foto real del suelo</span><i class="st"></i></li>
+    </ul>
+    <div class="cv-bar"><i id="cvBar"></i></div>
+    <div id="lmsg">Preparando la maqueta…</div>
+  </div>
 </div>
+<script>
+  // ciudad de fondo de la portada: barras que se levantan con alturas y tiempos distintos
+  (function () { var c = document.getElementById('cvCity'), n = innerWidth < 700 ? 26 : 54, h = ''; for (var i = 0; i < n; i++) { var a = 12 + Math.pow(Math.random(), 1.6) * 88; h += '<i style="height:' + a.toFixed(0) + '%;animation-delay:' + (Math.random() * 0.9).toFixed(2) + 's"></i>'; } c.innerHTML = h; })();
+</script>
+<div id="cvMini"><span data-k="edif"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5l8-3v19"/><path d="M12 21V9l8 3v9"/><path d="M8 7h.01M8 11h.01M8 15h.01M16 14h.01M16 18h.01"/><path d="M2 21h20"/></svg><b>Edificios</b></span><span data-k="capas"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><b>Vías</b></span><span data-k="arboles"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 19a4 4 0 0 1-2.24-7.32A3.5 3.5 0 0 1 9 6.03V6a3 3 0 1 1 6 0v.04a3.5 3.5 0 0 1 3.24 5.65A4 4 0 0 1 16 19Z"/><path d="M12 19v3"/></svg><b>Árboles</b></span><span data-k="trafico"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17h14"/><path d="M3 17v-4l2.5-5h13L21 13v4"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/></svg><b>Tráfico</b></span><span data-k="foto"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/></svg><b>Foto real del suelo</b></span></div>
+<div id="cvMarca"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg><div><b>REN3D · Kennedy 3D</b><small>Maqueta territorial · Bogotá</small></div></div>
+<div id="cvAyuda"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg><span id="cvAyudaT">Arrastra para girar · rueda para acercar</span></div>
 
 <div class="hud" id="hud-l">
   <div class="t">REN3D · TERRITORIO KENNEDY</div>
@@ -134,7 +206,7 @@
 
 <div class="hud" id="hud-c">
   <button id="b-sat" hidden style="display:none">🛰️ Satélite</button>
-  <button id="b-todo" class="on">Maqueta 3D</button>
+  <button id="b-todo" class="on"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg>Maqueta 3D</button>
   <button id="b-splat" hidden style="display:none">🌀 Splat Humedal</button>
   <button id="b-hd" hidden style="display:none">📦 HD</button>
   <button id="b-tour" hidden style="display:none">▶ Tour Kennedy</button>
@@ -142,10 +214,10 @@
   <button id="b-trees" class="on">🌳 Árboles 3D</button>
   <button id="b-water" class="on">🌊 Agua 3D</button>
   <button id="b-aves" class="on">🦆 Aves</button>
-  <button id="b-night">Noche</button>
+  <button id="b-night"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>Noche</button>
   <button id="b-home">🏠 Vista general</button>
   <button id="b-pie">🚶 A pie</button>
-  <button id="b-pajaro">JUGAR</button>
+  <button id="b-pajaro"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 7h.01"/><path d="M3.4 18H12a8 8 0 0 0 8-8V7a4 4 0 0 0-7.3-2.3L2 20"/><path d="m20 7 2 .5-2 .5"/><path d="M10 18v3"/><path d="M14 17.8V21"/><path d="M7.5 18a6 6 0 0 0 3.5-5.5"/></svg>JUGAR</button>
 </div>
 
 <div id="trafficHud" role="group" aria-label="Simulación de tráfico"><div class="trafficTop"><span>Simulación de tráfico</span><b id="trafficLabel">cargando…</b><button id="trafficPlay" type="button" aria-label="Reproducir simulación">❚❚</button></div><input id="trafficTime" type="range" min="0" max="1499" step="1" value="1000" aria-label="Tiempo de la simulación de carros"></div>
@@ -485,6 +557,26 @@ function buildPoiList() {
 }
 
 let idx = 0;
+/* pasos de carga de la portada (y de la píldora que queda arriba mientras termina lo pesado) */
+const PASOS = ['edif', 'capas', 'arboles', 'trafico', 'foto'];
+function marcarPaso(k) {
+  const li = document.querySelector('.cv-steps li[data-k="' + k + '"]');
+  if (!li || li.classList.contains('ok')) return;
+  li.classList.add('ok');
+  const m = document.querySelector('#cvMini span[data-k="' + k + '"]'); if (m) m.classList.add('ok');
+  const n = document.querySelectorAll('.cv-steps li.ok').length;
+  $('cvBar').style.width = Math.max(6, n / PASOS.length * 100) + '%';
+  if (n === PASOS.length) setTimeout(() => $('cvMini').classList.remove('on'), 1600);
+}
+function abrirPortada() {
+  if ($('loader').classList.contains('hidden')) return;
+  $('loader').classList.add('hidden');
+  if (document.querySelectorAll('.cv-steps li.ok').length < PASOS.length) $('cvMini').classList.add('on');
+  $('cvMarca').classList.add('on');
+  if (MOVIL) $('cvAyudaT').textContent = 'Arrastra para girar · pellizca para acercar';
+  setTimeout(() => $('cvAyuda').classList.add('on'), 900);
+  setTimeout(() => $('cvAyuda').classList.remove('on'), 7500);
+}
 
 /* ============ GEORREFERENCIA Y ESTADO ============ */
 const GKEY = 'AIzaSyCF2MXjc0DYRFrHk7j_BCyxVpWOdYqDIC4';
@@ -521,7 +613,7 @@ function setMode(m) {
     (async () => {
       const ok = await initTodo();
       if (!ok) setMode('sat');
-      else if (T3 && !T3.ready) { T3.ready = true; flyTodo(0, true); say('Humedal El Burro · arrastra para orbitar, WASD para volar'); }
+      else if (T3 && !T3.ready) { T3.ready = true; flyTodo(0, true); vueloLlegada(); say('Humedal El Burro · arrastra para orbitar, WASD para volar'); }
     })();
   }
   if (m === 'splat') {
@@ -600,10 +692,11 @@ function flyPie() {
 $('b-pie').onclick = flyPie;
 
 let night = false;
+const ICONO_SOL = '<svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>', ICONO_LUNA = '<svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
 $('b-night').onclick = e => {
   night = !night;
-  e.target.classList.toggle('on', night);
-  e.target.textContent = night ? 'Día' : 'Noche';
+  e.currentTarget.classList.toggle('on', night);
+  e.currentTarget.innerHTML = night ? ICONO_SOL + 'Día' : ICONO_LUNA + 'Noche';
   if (mode === 'todo') { todoNight(night); say(night ? '🌙 Noche TODO 3D' : '☀️ Día TODO 3D'); return; }
   if (mode === 'splat' && SPLAT && SPLAT.canvas) { SPLAT.canvas.classList.toggle('splat-night', night); say(night ? '🌙 Noche en el humedal' : '☀️ Día en el humedal'); return; }
   map.setPaintProperty('sat', 'raster-brightness-min', night ? -0.22 : 0);
@@ -844,8 +937,7 @@ async function crearMallaGoogle(T) {
     document.body.appendChild(d); T.debug = d;
   }
   // suelo base neutro bajo la foto: donde se recorta un edificio de Google no hay suelo debajo y se vería el cielo
-  const gb = new THREE.Mesh(new THREE.PlaneGeometry(14000, 10000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
-  gb.rotation.x = -Math.PI / 2; gb.position.y = -2.9; gb.renderOrder = -20; T.sueloBase = gb; T.scene.add(gb);
+
   // La foto de Google es solo el FONDO: tiene errores de altura de varios metros (copas y techos suben el suelo) y taparía las vías, el agua, los parques,
   // los árboles y los carros del modelo. Tras dibujarla se borra la profundidad, así todo lo propio se ve siempre encima y se ordena solo entre sí.
   const cd = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
@@ -940,7 +1032,7 @@ function actualizarMallaIn(T, tl, dt) {
   tl.update();
   if (!T.mallaMostrada) {
     const st = tl.stats, listo = st.downloading === 0 && st.parsing === 0 && st.visible > 8;
-    if (listo || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; }
+    if (listo || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; marcarPaso('foto'); }
     else tl.group.visible = false;
   }
   if (tl.errorTarget > T.errMeta && tl.stats.downloading === 0 && tl.stats.parsing === 0 && tl.stats.visible > 3) tl.errorTarget = Math.max(T.errMeta, Math.round(tl.errorTarget * 0.62));
@@ -1037,6 +1129,10 @@ async function initTodoReal() {
     try { suelo = (await import('./data3d/materiales.js')).crearMaterialesSuelo(renderer); } catch (e) { console.warn('materiales:', e); }
     T3 = { THREE, renderer, scene, camera, orbit, hemi, sun, skyU, liviano: LIVIANO, movil: MOVIL, night: false, anim: null, last: 0, counts: {},
       waterU: { value: 0 }, sunOff: new THREE.Vector3(0.42, 0.62, 0.35).normalize().multiplyScalar(2600), suelo };
+    { // suelo base neutro desde el primer cuadro (debajo de todo; la foto de Google lo cubre cuando llega)
+      const gb = new THREE.Mesh(new THREE.PlaneGeometry(16000, 12000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
+      gb.rotation.x = -Math.PI / 2; gb.position.y = -2.9; gb.renderOrder = -20; T3.sueloBase = gb; scene.add(gb);
+    }
     if (suelo) suelo.cargar().catch(e => console.warn('texturas del suelo:', e));
     // ARRANQUE RÁPIDO: todo se pide a la vez (antes era uno tras otro) y la foto de Google baja en segundo plano sin bloquear la pantalla de carga
     const pEdifIdx = fetch('data3d/edif/index.json').then(r => r.json());
@@ -1047,7 +1143,7 @@ async function initTodoReal() {
       fetch('data3d/net.json').then(r => r.json())
     ]);
     const pMalla = crearMallaGoogle(T3).catch(e => { // sin la foto de Google queda el suelo de concreto de siempre
-      console.warn('malla de Google:', e); T3.tiles = null; say('⚠️ No cargó la foto del suelo: ' + String(e && e.message || e).slice(0, 100), 6000);
+      console.warn('malla de Google:', e); T3.tiles = null; marcarPaso('foto'); say('⚠️ No cargó la foto del suelo: ' + String(e && e.message || e).slice(0, 100), 6000);
       const gGeo = new THREE.PlaneGeometry(13000, 9500);
       { const uv = gGeo.attributes.uv, ps = gGeo.attributes.position; for (let i = 0; i < uv.count; i++) uv.setXY(i, ps.getX(i) / 7, -ps.getY(i) / 7); }
       const ground = new THREE.Mesh(gGeo, suelo ? suelo.piso : new THREE.MeshLambertMaterial({ color: 0x9a9a96 }));
@@ -1055,7 +1151,10 @@ async function initTodoReal() {
     });
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
-    try { T3.R = await import('./data3d/real3d.js?v=43'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
+    try { T3.R = await import('./data3d/real3d.js?v=44'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
+    // el tráfico empieza a bajar YA (antes esperaba a edificios, vías y árboles): son pocos KB por trozo
+    const pTraf = QUEST ? Promise.resolve(null) : buildTraffic(THREE).then(() => { marcarPaso('trafico'); return null; }, e => e);
+    if (QUEST) marcarPaso('trafico');
 
     // edificios del modelo propio: volumen limpio con huellas y alturas reales, sobre el suelo fotográfico de Google
     // edificios en binario por celdas de 1 km (data3d/edif): primero las cercanas a la cámara, el resto en segundo plano
@@ -1078,6 +1177,7 @@ async function initTodoReal() {
         }
       })();
     }
+    marcarPaso('edif');
     const T = await pT;
     const [W, P, N] = await pWPN;
     T3.net = N; // red de vías: el modo pájaro la usa para ubicar la avenida del humedal
@@ -1086,7 +1186,8 @@ async function initTodoReal() {
     // con los modelos reales NO se dibujan árboles de planos cruzados (se ven como imagen plana): sólo son el respaldo si fallan
     if (!realOK) await buildTreesReal(THREE, T);
     buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    if (new URLSearchParams(location.search).get('solo') === 'malla') { $('loader').classList.add('hidden'); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
+    marcarPaso('capas');
+    if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
     T3.avesU = { value: 0 }; T3.avesT = 0;
     // aves 3D (patos, fochas, garzas) repartidas por todos los humedales; si el módulo falla queda el modelo sencillo anterior
@@ -1095,7 +1196,7 @@ async function initTodoReal() {
       AVES = { grp: api.grp, nuevo: api };
       if (!$('b-aves').classList.contains('on')) api.grp.visible = false;
     }).catch(e => { console.warn('aves 3D:', e); buildAves(THREE); });
-    $('loader').classList.add('hidden'); // se abre en cuanto están los edificios y las capas; la foto de Google entra sola cuando termina de bajar
+    abrirPortada(); // se abre en cuanto están los edificios y las capas; lo demás termina de bajar con la píldora de arriba
     say('🧱 TODO 3D listo · ' + B.length.toLocaleString('es-CO') + ' edificios · cargando árboles 3D y tráfico…', 5000);
     // 2) lo pesado se carga después, en segundo plano y sin bloquear (si algo falla queda lo liviano)
     const pastoRespaldo = () => {
@@ -1103,20 +1204,18 @@ async function initTodoReal() {
       try { buildGrass(THREE, P, W); } catch (e) { console.warn('grass:', e); }
     };
     (async () => {
-      if (!realOK) { pastoRespaldo(); return; }
+      if (!realOK) { pastoRespaldo(); marcarPaso('arboles'); return; }
       try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
       } catch (e) { console.warn('arboles reales:', e); T3.trees = null; try { await buildTreesReal(THREE, T); } catch (e2) { console.warn('trees:', e2); } }
+      marcarPaso('arboles');
       try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
       catch (e) { console.warn('pasto 3D:', e); pastoRespaldo(); }
     })();
-    if (!QUEST) (async () => {
-      try { await buildTraffic(THREE); say('🚗 ' + TRAF.NV.toLocaleString('es-CO') + ' carros (' + Math.round(TRAF.dur) + 's de simulación)', 4000); }
-      catch (e) { console.warn('traffic:', e); try { buildCars(THREE, N); } catch (e2) { console.warn('cars:', e2); } }
-    })();    return true;
+    pTraf.then(e => { if (e) { console.warn('traffic:', e); try { buildCars(THREE, N); } catch (e2) { console.warn('cars:', e2); } marcarPaso('trafico'); } });    return true;
   } catch (e) {
     $('loader').classList.add('hidden');
     console.warn('TODO3D:', e);
@@ -2041,6 +2140,13 @@ function flyTodo(i, instant) {
     T3.anim = { t: 0, dur: 1.8, p0: T3.camera.position.clone(), c0: T3.orbit.target.clone(), p1, c1 };
   }
   $('mission').textContent = '➜ Misión: ' + p.n;
+}
+// vuelo de llegada: la cámara baja desde lo alto hasta la vista inicial mientras se desvanece la portada
+function vueloLlegada() {
+  const p1 = T3.camera.position.clone(), c1 = T3.orbit.target.clone();
+  const p0 = p1.clone().sub(c1).multiplyScalar(4.2).add(c1); p0.y = Math.max(p0.y, 420);
+  T3.camera.position.copy(p0);
+  T3.anim = { t: 0, dur: 3.4, p0, c0: c1.clone(), p1, c1 };
 }
 function flyTodoHome() {
   T3.anim = {
