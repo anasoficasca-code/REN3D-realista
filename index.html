@@ -1129,6 +1129,8 @@ async function initTodoReal() {
     try { suelo = (await import('./data3d/materiales.js')).crearMaterialesSuelo(renderer); } catch (e) { console.warn('materiales:', e); }
     T3 = { THREE, renderer, scene, camera, orbit, hemi, sun, skyU, liviano: LIVIANO, movil: MOVIL, night: false, anim: null, last: 0, counts: {},
       waterU: { value: 0 }, sunOff: new THREE.Vector3(0.42, 0.62, 0.35).normalize().multiplyScalar(2600), suelo };
+    { let ok; T3.pArboles = new Promise(r => ok = r); T3.arbolesOk = ok; }
+    T3.esperaArboles = () => Promise.race([T3.pArboles, new Promise(r => setTimeout(r, 15000))]);
     { // suelo base neutro desde el primer cuadro (debajo de todo; la foto de Google lo cubre cuando llega)
       const gb = new THREE.Mesh(new THREE.PlaneGeometry(16000, 12000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
       gb.rotation.x = -Math.PI / 2; gb.position.y = -2.9; gb.renderOrder = -20; T3.sueloBase = gb; scene.add(gb);
@@ -1151,7 +1153,7 @@ async function initTodoReal() {
     });
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
-    try { T3.R = await import('./data3d/real3d.js?v=44'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
+    try { T3.R = await import('./data3d/real3d.js?v=46'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
     // el tráfico empieza a bajar YA (antes esperaba a edificios, vías y árboles): son pocos KB por trozo
     const pTraf = QUEST ? Promise.resolve(null) : buildTraffic(THREE).then(() => { marcarPaso('trafico'); return null; }, e => e);
     if (QUEST) marcarPaso('trafico');
@@ -1171,6 +1173,7 @@ async function initTodoReal() {
       B = [].concat(...await Promise.all(cel.slice(0, 6).map(c => cargarEdif(c.f))));
       buildChunks(THREE, B); agregarHuellas(B);
       (async () => {
+        await T3.esperaArboles(); // los árboles cercanos pesan más a la vista que los edificios lejanos
         for (const c of cel.slice(6)) {
           try { const L = await cargarEdif(c.f); buildChunks(THREE, L); agregarHuellas(L); } catch (e) { console.warn('edificios', c.f, e); }
           await new Promise(r => setTimeout(r, 0));
@@ -1204,14 +1207,14 @@ async function initTodoReal() {
       try { buildGrass(THREE, P, W); } catch (e) { console.warn('grass:', e); }
     };
     (async () => {
-      if (!realOK) { pastoRespaldo(); marcarPaso('arboles'); return; }
+      if (!realOK) { pastoRespaldo(); marcarPaso('arboles'); T3.arbolesOk(); return; }
       try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
       } catch (e) { console.warn('arboles reales:', e); T3.trees = null; try { await buildTreesReal(THREE, T); } catch (e2) { console.warn('trees:', e2); } }
-      marcarPaso('arboles');
+      marcarPaso('arboles'); T3.arbolesOk();
       try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
       catch (e) { console.warn('pasto 3D:', e); pastoRespaldo(); }
     })();
@@ -1731,12 +1734,12 @@ async function buildTraffic(THREE) {
   const I = await (await fetch('data3d/traf/index.json')).json();
   const steps = new Array(I.NS), NS = I.NS, NV = I.NV, dur = I.dur, maxi = I.maxi;
   const tIni = Math.min(1000, dur - 5), k0 = Math.floor(tIni / I.chunk);
-  await cargarTrozoTrafico(I, k0, steps); // primero el trozo de la hora de inicio: los carros salen enseguida
-  (async () => { // el resto en segundo plano, de lo más cercano a lo más lejano en el tiempo
-    for (let d = 1; d < I.n; d++) for (const k of [k0 + d, k0 - d]) {
-      if (k < 0 || k >= I.n) continue;
-      try { await cargarTrozoTrafico(I, k, steps); } catch (e) { console.warn(e); }
-    }
+  const pedidos = new Map();
+  const pedirTrozo = (k) => { if (k < 0 || k >= I.n) return Promise.resolve(); if (!pedidos.has(k)) pedidos.set(k, cargarTrozoTrafico(I, k, steps).catch(e => { pedidos.delete(k); console.warn(e); })); return pedidos.get(k); };
+  await pedirTrozo(k0); // primero el trozo de la hora de inicio: los carros salen enseguida
+  (async () => { // el resto, cuando ya bajaron los árboles, de lo más cercano a lo más lejano en el tiempo
+    await T3.esperaArboles();
+    for (let d = 1; d < I.n; d++) for (const k of [k0 + d, k0 - d]) await pedirTrozo(k);
   })();
   const chassisGeo = new THREE.BoxGeometry(4.5, 1.2, 2.2);
   chassisGeo.translate(0, 0.6, 0);
@@ -1761,7 +1764,7 @@ async function buildTraffic(THREE) {
   if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
   T3.scene.add(bodies, cabins, wheels);
   // arranca a las 16:40 (ya hay unos 2.000 carros en la calle) y en marcha; la barra de abajo permite pausar y mover el tiempo
-  TRAF = { steps, NS, NV, dur, maxi, t: tIni, playing: true, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi) };
+  TRAF = { steps, NS, NV, dur, maxi, t: tIni, playing: true, pedirTrozo, chunk: I.chunk, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi) };
   T3.counts.cars = NV;
   if (window.trafficPaint) window.trafficPaint();
   updateTraffic(0);
@@ -1774,7 +1777,7 @@ function updateTraffic(dt) {
   const k0 = Math.floor(TRAF.t) % TRAF.NS, k1 = (k0 + 1) % TRAF.NS;
   const f = TRAF.t - Math.floor(TRAF.t);
   const A = TRAF.steps[k0], B = TRAF.steps[k1] || A;
-  if (!A) return; // ese trozo del tráfico aún está bajando: los carros quedan quietos un instante
+  if (!A) { if (TRAF.pedirTrozo) TRAF.pedirTrozo(Math.floor(k0 / TRAF.chunk)); return; } // ese trozo aún no ha bajado: se pide ya y los carros esperan un instante
   const m = new Map();
   for (let i = 0; i < B.ids.length; i++) m.set(B.ids[i], i);
   const d = TRAF.dummy;

@@ -3,9 +3,11 @@
 // distancia), pasto y arbustos reales 3D, agua con ondas reales y aves en todos los humedales. Creditos en data3d/CREDITOS.txt
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const gltfLoader = new GLTFLoader();
+gltfLoader.setMeshoptDecoder(MeshoptDecoder); // los modelos de árboles y plantas van comprimidos con meshopt (17 MB -> 7,5 MB)
 const hash = (i) => { i = (i + 0x7ed55d16) + (i << 12); i = (i ^ 0xc761c23c) ^ (i >>> 19); i = (i + 0x165667b1) + (i << 5); i = (i + 0xd3a2646c) ^ (i << 9); i = (i + 0xfd7046c5) + (i << 3); i = (i ^ 0xb55a4f09) ^ (i >>> 16); return (i >>> 0) / 4294967296; };
 
 /* ------------------------------------------------------------------ entorno: reflejos del cielo ------------------------------------------------------------------ */
@@ -131,7 +133,19 @@ export function createFleet(T3, env) {
 }
 
 /* ------------------------------------------------------------------ utilidades de modelos ------------------------------------------------------------------ */
-function recolectar(scene) { const out = []; scene.updateMatrixWorld(true); scene.traverse(o => { if (o.isMesh) { const g = o.geometry.clone(); g.applyMatrix4(o.matrixWorld); out.push({ geo: g, mat: o.material }); } }); return out; }
+// los modelos comprimidos (meshopt) guardan posiciones/normales/UV como enteros normalizados: se pasan a decimales ANTES de transformarlos,
+// si no, al escalar el árbol los valores se saturan en [-1, 1] y la copa queda encerrada en un cubo
+function aFloat(g) {
+  for (const k of Object.keys(g.attributes)) {
+    const a = g.attributes[k];
+    if (!a.isInterleavedBufferAttribute && a.array instanceof Float32Array) continue;
+    const n = a.count, s = a.itemSize, f = new Float32Array(n * s), get = [a.getX, a.getY, a.getZ, a.getW];
+    for (let i = 0; i < n; i++) for (let j = 0; j < s; j++) f[i * s + j] = get[j].call(a, i);
+    g.setAttribute(k, new THREE.BufferAttribute(f, s));
+  }
+  return g;
+}
+function recolectar(scene) { const out = []; scene.updateMatrixWorld(true); scene.traverse(o => { if (o.isMesh) { const g = aFloat(o.geometry.clone()); g.applyMatrix4(o.matrixWorld); out.push({ geo: g, mat: o.material }); } }); return out; }
 function cajaDe(partes) { const b = new THREE.Box3(); partes.forEach(p => { p.geo.computeBoundingBox(); b.union(p.geo.boundingBox); }); return b; }
 function ajustarMat(m, env, o) { m.side = THREE.DoubleSide; m.metalness = 0; m.roughness = o.roughness ?? 0.85; if (o.tinte) m.color.multiplyScalar(o.tinte); if (o.alphaTest) { m.alphaTest = o.alphaTest; m.transparent = false; m.depthWrite = true; } m.envMap = env; m.envMapIntensity = o.env ?? 0.45; m.needsUpdate = true; return m; }
 const estaDentro = (x, z, v) => { let ins = false; for (let i = 0, j = v.length - 1; i < v.length; j = i++) { if (((v[i][1] > z) !== (v[j][1] > z)) && (x < (v[j][0] - v[i][0]) * (z - v[i][1]) / (v[j][1] - v[i][1]) + v[i][0])) ins = !ins; } return ins; };
