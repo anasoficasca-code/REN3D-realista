@@ -962,30 +962,15 @@ function decodificarEdificios(I, buf) {
   }
   return B;
 }
-// dibuja en la máscara las huellas de un lote de edificios (se llama por cada celda que llega)
-function mascaraDibujar(T, B) {
-  const THREE = T.THREE, R = MASK.RES;
-  if (!T.maskCv) {
-    const cv = document.createElement('canvas'); cv.width = Math.ceil(MASK.XM / R); cv.height = Math.ceil(MASK.YM / R);
-    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.colorSpace = THREE.NoColorSpace;
-    T.maskCv = cv; T.maskTex = tex; T.maskU.uMask.value = tex;
-  }
-  const g = T.maskCv.getContext('2d');
-  g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineWidth = 2; g.lineJoin = 'round'; // el trazo agranda cada huella ~2,5 m
-  g.beginPath();
-  for (const b of B) {
-    const p = b.pts; if (p.length < 4) continue;
-    let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
-    for (let i = 0; i < p.length - 1; i++) { const q = p[i]; if (q[0] < minx) minx = q[0]; if (q[0] > maxx) maxx = q[0]; if (q[1] < miny) miny = q[1]; if (q[1] > maxy) maxy = q[1]; }
-    if ((maxx - minx) < 2 && (maxy - miny) < 2 && b.h <= 3) continue; // misma basura que buildChunks descarta
-    g.moveTo(p[0][0] / R, (MASK.YM - p[0][1]) / R);
-    for (let i = 1; i < p.length; i++) g.lineTo(p[i][0] / R, (MASK.YM - p[i][1]) / R);
-    g.closePath();
-  }
-  g.fill(); g.stroke();
-  T.maskTex.needsUpdate = true; T.maskU.uOn.value = 1;
+// máscara de huellas precalculada (tools/mascara_build.py): una imagen de un canal que se sube UNA vez a la tarjeta gráfica
+// (antes se dibujaba en un lienzo de 44 MB y se volvía a subir completo por cada celda de edificios: lo que más tardaba al abrir)
+function cargarMascara(T, f) {
+  const THREE = T.THREE;
+  new THREE.TextureLoader().load('data3d/edif/' + f, tex => {
+    tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+    tex.colorSpace = THREE.NoColorSpace; tex.format = THREE.RedFormat; tex.needsUpdate = true;
+    T.maskU.uMask.value = tex; T.maskU.uOn.value = 1;
+  }, undefined, e => console.warn('máscara de huellas:', e));
 }
 function aplicarMalla(T, tiles) {
   const tl = tiles || T.tiles;
@@ -1162,9 +1147,8 @@ async function initTodoReal() {
     // edificios en binario por celdas de 1 km (data3d/edif): primero las cercanas a la cámara, el resto en segundo plano
     const EI = await pEdifIdx;
     const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
-    T3.huellas = [];
-    const agregarHuellas = (L) => { T3.huellas.push(L); if (T3.maskU) mascaraDibujar(T3, L); };
-    pMalla.then(() => { if (T3.maskU) for (const L of T3.huellas) mascaraDibujar(T3, L); });
+    const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
+    if (!(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
     let B = [];
     if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
     else if (!LIVIANO) {
