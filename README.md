@@ -9,7 +9,19 @@ Web: https://anasoficasca-code.github.io/REN3D-realista/
 - **Fondo:** la malla de Google (foto real, fotogrametría aérea) se dibuja primero y luego se borra la profundidad. Es solo un fondo fotográfico: tiene errores de altura de varios metros y no puede tapar nada del modelo.
 - **Encima, el modelo propio, siempre visible:** vías, aceras, parques, agua animada, edificios (`data3d/buildings.json`, 243 mil huellas con altura, paleta residencial y techos), árboles 3D reales con niveles de detalle (`data3d/real3d.js`), carros con las trayectorias reales de `kennedy_vehiculos.json`, peatones y aves de los humedales.
 - **Máscara de huellas:** donde hay un edificio del modelo se recorta en el shader lo que Google levanta (`construirMascara`), para que no asome su versión "derretida".
-- **Arranque rápido:** todos los datos se descargan a la vez y la pantalla de carga se cierra en cuanto están los edificios y las capas; la foto de Google entra sola cuando ya trae detalle.
+- **Arranque rápido:** todos los datos se descargan a la vez y la pantalla de carga se cierra en cuanto están los edificios cercanos y las capas; la foto de Google entra sola cuando ya trae detalle.
+
+## Datos livianos
+
+| Dato | Antes | Ahora |
+| --- | --- | --- |
+| Tráfico | `kennedy_vehiculos.json` · 57 MB (18,4 MB comprimido), se leía de un golpe | `data3d/traf/c00…c14.bin` · 3,4 MB comprimido, en trozos de 100 s: primero el de la hora de inicio |
+| Edificios | `buildings.json` · 37 MB (11,1 MB comprimido) | `data3d/edif/*.bin` · 4,0 MB comprimido, en 51 celdas de 1 km: primero las cercanas a la cámara |
+| Edificios (celular) | `buildings_humedal.json` · 0,88 MB comprimido | `data3d/edif/humedal.bin` · 0,35 MB |
+| Texturas del suelo | 7,5 MB | 2,5 MB (misma resolución, mejor compresión) |
+| Mapa satelital oculto (maplibre) | se descargaba y construía 3.500 árboles sin verse | eliminado |
+
+Los binarios se regeneran con `python tools/traf_build.py` y `python tools/edif_build.py` (leen los JSON originales, que siguen en `data3d/`).
 - **Alineación:** el modelo de Rhino se georreferenció contra las calles de OpenStreetMap (solo traslación, sin giro ni inversión, error de pocos metros; ver `GEO` en `index.html`). La malla de Google se coloca en ese mismo sistema y se calibra al suelo midiendo su altura real alrededor de la cámara.
 - **Botones:** Maqueta 3D, Noche y JUGAR (modo pájaro y VR).
 

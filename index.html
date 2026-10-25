@@ -7,8 +7,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>REN3D • Kennedy 3D · Territorio Real</title>
 <link rel="icon" href="data:,">
-<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
-<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
@@ -258,13 +256,8 @@ const style = {
   ]
 };
 
-const map = new maplibregl.Map({
-  container: 'map', style, center: [INICIO.lng, INICIO.lat],
-  zoom: INICIO.zoom, pitch: INICIO.pitch, bearing: INICIO.bearing,
-  antialias: true, attributionControl: { compact: true }
-});
-map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-left');
-map.addControl(new maplibregl.ScaleControl({ maxWidth: 92, unit: 'metric' }), 'bottom-right');
+// la Maqueta no usa el mapa satelital: se deja un sustituto vacío para el código de respaldo (antes maplibre se descargaba y trabajaba sin verse)
+const map = new Proxy({}, { get: (_, k) => k === 'getCenter' ? () => ({ lat: INICIO.lat, lng: INICIO.lng }) : (k === 'getZoom' || k === 'getPitch' || k === 'getBearing') ? () => 0 : () => {} });
 
 const $ = id => document.getElementById(id);
 const toast = $('toast');
@@ -470,16 +463,8 @@ $('b-aves').onclick = e => {
 
 /* ============================================================ */
 
-map.on('load', () => {
-  map.setLight({ anchor: 'viewport', color: '#fff6e8', intensity: 0.42, position: [1.5, 200, 32] });
-  POIS.forEach((p, i) => addPin(p, i));
-  buildPoiList();
-  $('o-st').textContent = 'satélite + 3D listo';
-  say('🗺️ Territorio de Kennedy cargado · ' + POIS.length + ' puntos de misión');
-  tick();
-  init3D();
-});
-map.on('error', e => console.warn('tile:', e && e.error && e.error.message));
+setTimeout(() => { buildPoiList(); tick(); }, 0); // después de que el script termine de declarar todo
+
 
 function addPin(p, i) {
   const el = document.createElement('div');
@@ -868,30 +853,47 @@ async function crearMallaGoogle(T) {
 }
 // huellas de los edificios del modelo dibujadas en un lienzo (blanco = libre, negro = edificio) en coordenadas del modelo, norte arriba
 const MASK = { XM: 10800, YM: 6400, RES: 2.5 };
-async function construirMascara(T, B) {
-  const THREE = T.THREE, W = Math.ceil(MASK.XM / MASK.RES), H = Math.ceil(MASK.YM / MASK.RES), R = MASK.RES;
-  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-  const g = cv.getContext('2d');
-  g.fillStyle = '#fff'; g.fillRect(0, 0, W, H);
-  g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineWidth = 2; g.lineJoin = 'round'; // el trazo agranda cada huella ~2,5 m
-  for (let s = 0; s < B.length; s += 12000) { // por lotes: no congela la página con los 243 mil edificios
-    g.beginPath();
-    for (let k = s; k < Math.min(B.length, s + 12000); k++) {
-      const b = B[k], p = b.pts; if (p.length < 4) continue;
-      let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
-      for (let i = 0; i < p.length - 1; i++) { const q = p[i]; if (q[0] < minx) minx = q[0]; if (q[0] > maxx) maxx = q[0]; if (q[1] < miny) miny = q[1]; if (q[1] > maxy) maxy = q[1]; }
-      if ((maxx - minx) < 2 && (maxy - miny) < 2 && b.h <= 3) continue; // misma basura que buildChunks descarta
-      g.moveTo(p[0][0] / R, (MASK.YM - p[0][1]) / R);
-      for (let i = 1; i < p.length; i++) g.lineTo(p[i][0] / R, (MASK.YM - p[i][1]) / R);
-      g.closePath();
-    }
-    g.fill(); g.stroke();
-    await new Promise(r => setTimeout(r, 0));
+// edificios en binario (data3d/edif/*.bin, generados desde buildings.json): por edificio n.º de vértices, altura·10 y vértices en 0,25 m (el primero absoluto, los demás como diferencia)
+function decodificarEdificios(I, buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x31424552) throw new Error('formato de edificios inválido'); // 'REB1'
+  const end = 8 + dv.getUint32(4, true), iq = 1 / I.Q, B = [];
+  let o = 8;
+  while (o < end) {
+    const n = dv.getUint16(o, true), h = dv.getUint16(o + 2, true) / 10;
+    let x = dv.getUint16(o + 4, true), y = dv.getUint16(o + 6, true); o += 8;
+    const pts = new Array(n + 1);
+    pts[0] = [x * iq + I.X0, y * iq + I.Y0];
+    for (let i = 1; i < n; i++) { x += dv.getInt16(o, true); y += dv.getInt16(o + 2, true); o += 4; pts[i] = [x * iq + I.X0, y * iq + I.Y0]; }
+    pts[n] = pts[0]; // anillo cerrado, como en el JSON original
+    B.push({ pts, h });
   }
-  const tex = new THREE.CanvasTexture(cv);
-  tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
-  tex.colorSpace = THREE.NoColorSpace; tex.needsUpdate = true;
-  T.maskU.uMask.value = tex; T.maskU.uOn.value = 1;
+  return B;
+}
+// dibuja en la máscara las huellas de un lote de edificios (se llama por cada celda que llega)
+function mascaraDibujar(T, B) {
+  const THREE = T.THREE, R = MASK.RES;
+  if (!T.maskCv) {
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(MASK.XM / R); cv.height = Math.ceil(MASK.YM / R);
+    const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.flipY = false; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.colorSpace = THREE.NoColorSpace;
+    T.maskCv = cv; T.maskTex = tex; T.maskU.uMask.value = tex;
+  }
+  const g = T.maskCv.getContext('2d');
+  g.fillStyle = '#000'; g.strokeStyle = '#000'; g.lineWidth = 2; g.lineJoin = 'round'; // el trazo agranda cada huella ~2,5 m
+  g.beginPath();
+  for (const b of B) {
+    const p = b.pts; if (p.length < 4) continue;
+    let minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+    for (let i = 0; i < p.length - 1; i++) { const q = p[i]; if (q[0] < minx) minx = q[0]; if (q[0] > maxx) maxx = q[0]; if (q[1] < miny) miny = q[1]; if (q[1] > maxy) maxy = q[1]; }
+    if ((maxx - minx) < 2 && (maxy - miny) < 2 && b.h <= 3) continue; // misma basura que buildChunks descarta
+    g.moveTo(p[0][0] / R, (MASK.YM - p[0][1]) / R);
+    for (let i = 1; i < p.length; i++) g.lineTo(p[i][0] / R, (MASK.YM - p[i][1]) / R);
+    g.closePath();
+  }
+  g.fill(); g.stroke();
+  T.maskTex.needsUpdate = true; T.maskU.uOn.value = 1;
 }
 function aplicarMalla(T, tiles) {
   const tl = tiles || T.tiles;
@@ -1024,7 +1026,7 @@ async function initTodoReal() {
     const sun = new THREE.DirectionalLight(DIA.solColor, DIA.sol);
     sun.position.set(4000, 5000, 2000);
     sun.castShadow = !LIVIANO;
-    sun.shadow.mapSize.set(MEDIO ? 2048 : 4096, MEDIO ? 2048 : 4096); // sombras nítidas alrededor del pájaro (el sol sigue a la cámara)
+    sun.shadow.mapSize.set(2048, 2048); // sombras nítidas alrededor del pájaro (el sol sigue a la cámara)
     const SR = MEDIO ? 320 : 600; sun.shadow.camera.left = -SR; sun.shadow.camera.right = SR;
     sun.shadow.camera.top = SR; sun.shadow.camera.bottom = -SR;
     sun.shadow.camera.near = 100; sun.shadow.camera.far = 7000;
@@ -1037,7 +1039,7 @@ async function initTodoReal() {
       waterU: { value: 0 }, sunOff: new THREE.Vector3(0.42, 0.62, 0.35).normalize().multiplyScalar(2600), suelo };
     if (suelo) suelo.cargar().catch(e => console.warn('texturas del suelo:', e));
     // ARRANQUE RÁPIDO: todo se pide a la vez (antes era uno tras otro) y la foto de Google baja en segundo plano sin bloquear la pantalla de carga
-    const pB = (LIVIANO && !MEDIO) ? Promise.resolve([]) : fetchProg(LIVIANO ? 'data3d/buildings_humedal.json' : 'data3d/buildings.json', 'Edificios');
+    const pEdifIdx = fetch('data3d/edif/index.json').then(r => r.json());
     const pT = fetch('data3d/trees.json').then(r => r.json());
     const pWPN = Promise.all([
       fetch('data3d/water_bodies.json').then(r => r.json()),
@@ -1056,11 +1058,26 @@ async function initTodoReal() {
     try { T3.R = await import('./data3d/real3d.js?v=43'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
 
     // edificios del modelo propio: volumen limpio con huellas y alturas reales, sobre el suelo fotográfico de Google
-    const B = await pB;
-    $('lmsg').textContent = 'Levantando ' + B.length.toLocaleString('es-CO') + ' edificios…';
-    await new Promise(r => setTimeout(r, 30));
-    buildChunks(THREE, B);
-    pMalla.then(() => { if (T3.tiles && B.length) construirMascara(T3, B).catch(e => console.warn('máscara de huellas:', e)); });
+    // edificios en binario por celdas de 1 km (data3d/edif): primero las cercanas a la cámara, el resto en segundo plano
+    const EI = await pEdifIdx;
+    const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
+    T3.huellas = [];
+    const agregarHuellas = (L) => { T3.huellas.push(L); if (T3.maskU) mascaraDibujar(T3, L); };
+    pMalla.then(() => { if (T3.maskU) for (const L of T3.huellas) mascaraDibujar(T3, L); });
+    let B = [];
+    if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
+    else if (!LIVIANO) {
+      const tx = 7577, ty = 3601; // punto que mira la cámara al abrir
+      const cel = EI.celdas.slice().sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
+      B = [].concat(...await Promise.all(cel.slice(0, 6).map(c => cargarEdif(c.f))));
+      buildChunks(THREE, B); agregarHuellas(B);
+      (async () => {
+        for (const c of cel.slice(6)) {
+          try { const L = await cargarEdif(c.f); buildChunks(THREE, L); agregarHuellas(L); } catch (e) { console.warn('edificios', c.f, e); }
+          await new Promise(r => setTimeout(r, 0));
+        }
+      })();
+    }
     const T = await pT;
     const [W, P, N] = await pWPN;
     T3.net = N; // red de vías: el modo pájaro la usa para ubicar la avenida del humedal
@@ -1096,7 +1113,7 @@ async function initTodoReal() {
       try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
       catch (e) { console.warn('pasto 3D:', e); pastoRespaldo(); }
     })();
-    if (!LIVIANO) (async () => {
+    if (!QUEST) (async () => {
       try { await buildTraffic(THREE); say('🚗 ' + TRAF.NV.toLocaleString('es-CO') + ' carros (' + Math.round(TRAF.dur) + 's de simulación)', 4000); }
       catch (e) { console.warn('traffic:', e); try { buildCars(THREE, N); } catch (e2) { console.warn('cars:', e2); } }
     })();    return true;
@@ -1534,27 +1551,44 @@ function buildGrass(THREE, P, W) {
 }
 let CARS = null;
 let TRAF = null;
-async function buildTraffic(THREE) {
-  $('lmsg').textContent = 'Cargando tráfico real (57 MB)…';
-  await new Promise(r => setTimeout(r, 30));
-  const raw = await fetchProg('data3d/kennedy_vehiculos.json', 'Tráfico');
-  const id2i = new Map();
-  const NS = raw.length;
-  const steps = new Array(NS);
-  let maxi = 0;
-  for (let s = 0; s < NS; s++) {
-    const vs = raw[s][1], n = vs.length;
-    const ids = new Int32Array(n), xs = new Float32Array(n), ys = new Float32Array(n);
-    for (let k = 0; k < n; k++) {
-      const v = vs[k];
-      let ii = id2i.get(v[0]);
-      if (ii === undefined) { ii = id2i.size; id2i.set(v[0], ii); }
-      ids[k] = ii; xs[k] = v[1]; ys[k] = v[2];
+// Tráfico en trozos binarios de 100 s (data3d/traf/cNN.bin, 3,4 MB en total en vez del JSON de 57 MB):
+// por paso: cantidad, ids ordenados (diferencias), x/y en décimas de 0,2 m como diferencia respecto al paso anterior (absolutas si el carro es nuevo)
+async function cargarTrozoTrafico(I, k, steps) {
+  const r = await fetch('data3d/traf/c' + String(k).padStart(2, '0') + '.bin');
+  if (!r.ok) throw new Error('trozo de tráfico ' + k);
+  const dv = new DataView(await r.arrayBuffer());
+  if (dv.getUint32(0, true) !== 0x31465452) throw new Error('formato de tráfico inválido'); // 'RTF1'
+  let o = 4; const ns = dv.getUint16(o, true); o += 2; const t0 = Math.round(dv.getFloat32(o, true)); o += 4;
+  const S = I.scale;
+  let prev = new Map();
+  for (let s = 0; s < ns; s++) {
+    const n = dv.getUint16(o, true); o += 2;
+    const pid = o, pdx = o + 2 * n, pdy = o + 4 * n; o += 6 * n;
+    const ids = new Int32Array(n), xs = new Float32Array(n), ys = new Float32Array(n), cur = new Map();
+    let id = 0;
+    for (let i = 0; i < n; i++) {
+      id += dv.getUint16(pid + 2 * i, true);
+      const p = prev.get(id);
+      const xi = p ? p[0] + dv.getInt16(pdx + 2 * i, true) : dv.getUint16(pdx + 2 * i, true);
+      const yi = p ? p[1] + dv.getInt16(pdy + 2 * i, true) : dv.getUint16(pdy + 2 * i, true);
+      cur.set(id, [xi, yi]);
+      ids[i] = id; xs[i] = xi / S; ys[i] = yi / S;
     }
-    steps[s] = { t: raw[s][0], ids, xs, ys };
-    if (n > maxi) maxi = n;
+    steps[t0 + s] = { t: t0 + s, ids, xs, ys };
+    prev = cur;
   }
-  const NV = id2i.size, dur = steps[NS - 1].t;
+}
+async function buildTraffic(THREE) {
+  const I = await (await fetch('data3d/traf/index.json')).json();
+  const steps = new Array(I.NS), NS = I.NS, NV = I.NV, dur = I.dur, maxi = I.maxi;
+  const tIni = Math.min(1000, dur - 5), k0 = Math.floor(tIni / I.chunk);
+  await cargarTrozoTrafico(I, k0, steps); // primero el trozo de la hora de inicio: los carros salen enseguida
+  (async () => { // el resto en segundo plano, de lo más cercano a lo más lejano en el tiempo
+    for (let d = 1; d < I.n; d++) for (const k of [k0 + d, k0 - d]) {
+      if (k < 0 || k >= I.n) continue;
+      try { await cargarTrozoTrafico(I, k, steps); } catch (e) { console.warn(e); }
+    }
+  })();
   const chassisGeo = new THREE.BoxGeometry(4.5, 1.2, 2.2);
   chassisGeo.translate(0, 0.6, 0);
   const cabinGeo = new THREE.BoxGeometry(2.5, 1.5, 1.8);
@@ -1578,7 +1612,7 @@ async function buildTraffic(THREE) {
   if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
   T3.scene.add(bodies, cabins, wheels);
   // arranca a las 16:40 (ya hay unos 2.000 carros en la calle) y en marcha; la barra de abajo permite pausar y mover el tiempo
-  TRAF = { steps, NS, NV, dur, maxi, t: Math.min(1000, dur - 5), playing: true, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi) };
+  TRAF = { steps, NS, NV, dur, maxi, t: tIni, playing: true, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi) };
   T3.counts.cars = NV;
   if (window.trafficPaint) window.trafficPaint();
   updateTraffic(0);
@@ -1590,7 +1624,8 @@ function updateTraffic(dt) {
   if (window.trafficUI) window.trafficUI(TRAF.t, TRAF.dur);
   const k0 = Math.floor(TRAF.t) % TRAF.NS, k1 = (k0 + 1) % TRAF.NS;
   const f = TRAF.t - Math.floor(TRAF.t);
-  const A = TRAF.steps[k0], B = TRAF.steps[k1];
+  const A = TRAF.steps[k0], B = TRAF.steps[k1] || A;
+  if (!A) return; // ese trozo del tráfico aún está bajando: los carros quedan quietos un instante
   const m = new Map();
   for (let i = 0; i < B.ids.length; i++) m.set(B.ids[i], i);
   const d = TRAF.dummy;
