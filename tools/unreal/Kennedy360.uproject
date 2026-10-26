@@ -1,0 +1,13 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.8",
+	"Category": "",
+	"Description": "Kennedy 360: giro fotorrealista de Kennedy (Bogota) para REN3D, con la malla de Google via Cesium",
+	"Plugins": [
+		{ "Name": "CesiumForUnreal", "Enabled": true },
+		{ "Name": "PythonScriptPlugin", "Enabled": true },
+		{ "Name": "EditorScriptingUtilities", "Enabled": true },
+		{ "Name": "MovieRenderPipeline", "Enabled": true },
+		{ "Name": "SequencerScripting", "Enabled": true }
+	]
+}

@@ -1,5 +1,15 @@
 # REN3D realista · Maqueta de Kennedy
 
+## Kennedy 360 (giro fotorrealista, como las maquetas de Umbra)
+
+Web: https://anasoficasca-code.github.io/REN3D-realista/giro.html
+
+- 72 fotogramas renderizados en **Unreal Engine 5.8** con **Cesium for Unreal 2.30** y la malla fotorrealista de Google (Cesium ion, asset 2275207): la ciudad, los techos y los cerros son reales. Sol de Bogotá a las 4:24 p. m., bruma y gradación de color.
+- La cámara gira alrededor del humedal El Burro (900 m de radio, 380 m de altura, lente de 24 mm).
+- El visor (`giro.html`) carga primero vistas livianas (`giro/s_NNN.webp`) para girar de inmediato y luego la vista en alta (`giro/f_NNN.webp`) del ángulo donde se detiene. Los marcadores se proyectan con la misma cámara del render.
+- Para regenerar: el proyecto de Unreal (`tools/unreal/`: `Kennedy360.uproject`, `DefaultEngine.ini` y los scripts de Python) se arma con `UnrealEditor-Cmd ... -run=pythonscript -script=armar_escena.py` (el token de Cesium ion va en `Config/cesium_ion_token.txt`, que no se sube), se renderiza con Movie Render Queue y los fotogramas se convierten con `python tools/giro_build.py`.
+- Las manchas blancas como nubes vienen de la propia malla de Google (fotos aéreas con nubes).
+
 Maqueta 3D de Kennedy (Bogotá) sobre la **malla fotorrealista de Google** (Google Photorealistic 3D Tiles), cargada dentro de la misma escena Three.js que el modelo propio.
 
 Web: https://anasoficasca-code.github.io/REN3D-realista/
