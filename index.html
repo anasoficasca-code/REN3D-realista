@@ -1300,7 +1300,8 @@ async function initTodoReal() {
                 vec4 q = uOrtoVP * vec4(vWPa.x, 0.0, vWPa.z, 1.0); vec2 uq = q.xy * 0.5 + 0.5;
                 if (uq.x > 0.0 && uq.x < 1.0 && uq.y > 0.0 && uq.y < 1.0) {
                   vec4 f = texture2D(uOrto, uq);
-                  if (f.a > 0.5 && f.g - max(f.r, f.b) > 0.012) discard; // vegetación en la foto
+                  float lf = dot(f.rgb, vec3(0.299, 0.587, 0.114));
+                  if (f.a > 0.5 && (f.b < f.g * 1.02 || lf > 0.13)) discard; // agua solo en los charcos oscuros; pasto, juncos y orillas claras: la foto
                 }
               }`);
         };
@@ -1363,7 +1364,8 @@ async function crearPostproceso(T) {
 }
 // vista realista (tipo Umbra): colores de Kennedy en sRGB, pasados a lineal (antes un ladrillo 0,62 lineal se veía casi blanco).
 // Conjuntos altos casi todos en ladrillo a la vista; casas bajas pintadas (blanco, crema, salmón, verde agua) o en ladrillo.
-const PAL_ALTO = [[0.64, 0.34, 0.23], [0.58, 0.31, 0.21], [0.70, 0.42, 0.30], [0.66, 0.37, 0.26], [0.86, 0.82, 0.74], [0.60, 0.33, 0.24], [0.76, 0.74, 0.70]];
+// colores de los videos de dron del humedal El Burro: torres de ladrillo rojizo, torres pañetadas salmón o durazno, y crema
+const PAL_ALTO = [[0.64, 0.34, 0.23], [0.58, 0.31, 0.21], [0.66, 0.37, 0.26], [0.60, 0.33, 0.24], [0.62, 0.35, 0.25], [0.88, 0.68, 0.56], [0.9, 0.74, 0.62], [0.86, 0.62, 0.52], [0.9, 0.84, 0.72], [0.84, 0.8, 0.72]];
 const PAL_BAJO = [[0.64, 0.35, 0.24], [0.90, 0.88, 0.82], [0.88, 0.80, 0.66], [0.86, 0.62, 0.52], [0.66, 0.78, 0.74], [0.70, 0.40, 0.28], [0.92, 0.90, 0.86], [0.80, 0.74, 0.58]];
 const lin = (c) => c.map(x => Math.pow(x, 2.2));
 // ÁRBOLES (vista realista): copas de muchos lóbulos pequeños y desiguales, en cuatro formas (redonda, ancha, alta tipo eucalipto,
@@ -1594,7 +1596,7 @@ function materialEdificios(THREE) {
           diffuseColor.rgb = mix(base * 0.86, c, k);
         }
         // cubierta real: el techo toma el color de la foto aérea (vista cenital de la malla de Google)
-        if (uOrtoOn > 0.5) {
+        if (uOrtoOn > 0.5 && vWl.z > -0.5) { // las láminas de los techos a dos aguas conservan su color
           vec3 fnr = normalize(cross(dFdx(vWP), dFdy(vWP)));
           if (abs(fnr.y) > 0.6) {
             vec4 q = uOrtoVP * vec4(vWP, 1.0); vec2 uvr = q.xy * 0.5 + 0.5;
@@ -1619,6 +1621,37 @@ function materialEdificios(THREE) {
   mat.customProgramCacheKey = () => REALISTA ? (PBR ? 'edificiosFachadaPBR' : 'edificiosFachadaTex') : 'edificiosVentanas';
   T3.matEdif = mat;
   return mat;
+}
+// TECHOS A DOS AGUAS (vista realista): los conjuntos de 2 a 7 pisos alrededor del humedal El Burro tienen cubierta inclinada de lámina
+// gris o gris verdosa (videos de dron del humedal). Se arma en los bloques casi rectangulares y alargados: cumbrera sobre el lado largo,
+// pendiente de ~20°, alero de 30 cm y los dos piñones del color del muro.
+const LAMINAS = [[0.47, 0.5, 0.5], [0.4, 0.46, 0.44], [0.53, 0.54, 0.54], [0.36, 0.4, 0.42], [0.55, 0.36, 0.3]].map(c => c.map(x => Math.pow(x, 2.2)));
+function techoDosAguas(W, h, bi, col, P, C, I, WL, vc) {
+  const n = W.length; if (h < 5 || h > 22 || n < 4) return vc;
+  let L = 0, ux = 1, uz = 0; // eje largo = el muro más largo
+  for (let i = 0; i < n; i++) { const a = W[i], b = W[(i + 1) % n], l = Math.hypot(b[0] - a[0], b[1] - a[1]); if (l > L) { L = l; ux = (b[0] - a[0]) / l; uz = (b[1] - a[1]) / l; } }
+  const vx = -uz, vz = ux;
+  let u0 = 1e9, u1 = -1e9, v0 = 1e9, v1 = -1e9, area = 0;
+  for (let i = 0; i < n; i++) {
+    const p = W[i], q = W[(i + 1) % n], u = p[0] * ux + p[1] * uz, v = p[0] * vx + p[1] * vz;
+    u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); area += p[0] * q[1] - q[0] * p[1];
+  }
+  const Lu = u1 - u0, Lv = v1 - v0; area = Math.abs(area) / 2;
+  if (area / (Lu * Lv) < 0.86 || Lu / Lv < 1.3 || Lv < 6 || Lv > 22) return vc; // solo bloques rectangulares y alargados
+  const o = 0.3, hr = Math.max(1.2, Math.min(3.2, Lv * 0.18)), vm = (v0 + v1) / 2;
+  const pt = (u, v) => [u * ux + v * vx, u * uz + v * vz];
+  const A = pt(u0 - o, v0 - o), B = pt(u1 + o, v0 - o), Cc = pt(u1 + o, v1 + o), D = pt(u0 - o, v1 + o), R0 = pt(u0 - o, vm), R1 = pt(u1 + o, vm);
+  const lam = LAMINAS[(bi * 7 + 3) % LAMINAS.length], k = 0.9 + ((bi * 37) % 20) / 100;
+  const add = (q, y, c) => { P.push(q[0], y, q[1]); C.push(c[0] * k, c[1] * k, c[2] * k); WL.push(0, 0, c === lam ? -1 : 0, h); return vc++; }; // -1: lámina (no toma la foto aérea)
+  const he = h - 0.15;
+  // dos faldones (cada uno con sus vértices: sombreado plano por faldón)
+  let a = add(A, he, lam), b = add(B, he, lam), c = add(R1, h + hr, lam), d = add(R0, h + hr, lam); I.push(a, c, b, a, d, c);
+  a = add(D, he, lam); b = add(Cc, he, lam); c = add(R1, h + hr, lam); d = add(R0, h + hr, lam); I.push(a, b, c, a, c, d);
+  // piñones (triángulos de muro en los extremos)
+  const pA = pt(u0, v0), pD = pt(u0, v1), pB = pt(u1, v0), pC = pt(u1, v1), r0 = pt(u0, vm), r1 = pt(u1, vm);
+  a = add(pA, h, col.w); b = add(pD, h, col.w); c = add(r0, h + hr - 0.2, col.w); I.push(a, c, b);
+  a = add(pB, h, col.w); b = add(pC, h, col.w); c = add(r1, h + hr - 0.2, col.w); I.push(a, b, c);
+  return vc;
 }
 function buildChunks(THREE, B) {
   const CELL = LIVIANO ? 350 : 1500; // en gafas/celular: bloques pequeños, para poder descartar los que no se ven (y los lejanos)
@@ -1673,6 +1706,8 @@ function buildChunks(THREE, B) {
       try { tri = THREE.ShapeUtils.triangulateShape(W.map(q => new THREE.Vector2(q[0], q[1])), []); } catch (e) {}
       if (tri.length) { for (const t of tri) I.push(base + 2 * n + 1 + t[0], base + 2 * n + 1 + t[1], base + 2 * n + 1 + t[2]); }
       else for (let i = 0; i < n; i++) I.push(base + 2 * n, base + 2 * n + 1 + i, base + 2 * n + 1 + (i + 1) % n);
+      vc = base + 3 * n + 1;
+      if (REALISTA) vc = techoDosAguas(W, h, bi, col, P, C, I, WL, vc);
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
