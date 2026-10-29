@@ -11,6 +11,7 @@ La maqueta abre como simulador de vigilancia y tráfico (`data3d/simulador.js`),
 - **Tráfico:** hora simulada, pausa, velocidad x1/x2/x5/x10, línea de tiempo, vehículos activos, velocidad media, porcentaje detenido y gráfica de velocidad media.
 - **Vistas:** cenital (desde arriba) y oblicua (35°).
 - **Celular:** el botón PANEL abre los controles como hoja inferior.
+- **Vista fotorrealista (por defecto):** el mundo es la malla 3D de Google completa (edificios, árboles y suelo reales, con su profundidad), como Google Earth. Encima solo van los carros, peatones y aves de la simulación; el suelo de la malla se calibra midiendo su altura bajo los carros y se vuelve a medir al ir a otra zona. El botón **Maqueta** (o `?maqueta=1`) vuelve a la maqueta propia.
 
 ## Kennedy 360 (giro fotorrealista, como las maquetas de Umbra)
 

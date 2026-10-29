@@ -828,6 +828,9 @@ let LIVIANO = new URLSearchParams(location.search).get('liviano') === '1'; // si
 let MEDIO = false; // con LIVIANO: conserva los edificios (Quest sola)
 const QUEST = /OculusBrowser|Quest|Pico/i.test(navigator.userAgent);
 if (QUEST) { LIVIANO = true; MEDIO = true; } // gafas independientes: versión ligera (sin sombras ni tráfico pesado) pero CON los edificios del entorno del humedal desde que abre la página
+// REALISTA (por defecto): el mundo es la malla fotorrealista de Google completa, como Google Earth en 3D; sobre ella solo van carros, peatones y aves.
+// ?maqueta=1 vuelve a la maqueta propia (edificios, vías, agua, parques y árboles del modelo encima de la foto)
+const REALISTA = new URLSearchParams(location.search).get('maqueta') !== '1';
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
@@ -882,7 +885,7 @@ async function crearMallaGoogle(T) {
   tiles.setCamera(T.camera);
   tiles.setResolutionFromRenderer(T.camera, T.renderer);
   // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
-  T.errMeta = T.movil ? 28 : 14; // meta: menor = más nítido (fachadas) pero más descarga
+  T.errMeta = REALISTA ? (T.movil ? 20 : 8) : (T.movil ? 28 : 14); // meta: menor = más nítido (fachadas) pero más descarga
   tiles.errorTarget = 56;
   T.tilesErr = 0; T.tilesT0 = performance.now(); T.mallaMostrada = false;
   tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
@@ -897,7 +900,7 @@ async function crearMallaGoogle(T) {
   TR.WGS84_ELLIPSOID.getEastNorthUpFrame(q[1] * D2R, q[0] * D2R, frame);
   frame.multiply(new THREE.Matrix4().makeTranslation(0, 0, 2548)); // altura elipsoidal medida del suelo de Kennedy; luego se calibra fino
   T.tilesM = new THREE.Matrix4().makeRotationX(-Math.PI / 2).multiply(frame.invert());
-  T.sueloY = -1.8; // la foto del suelo queda ~2 m POR DEBAJO de las vías, el agua y los parques del modelo (y = 0): así ellos nunca quedan tapados por la foto
+  T.sueloY = REALISTA ? 0.3 : -1.8; // realista: el suelo de la foto queda justo bajo las ruedas de los carros (0,64) y los pies de los peatones. Maqueta: la foto del suelo queda ~2 m POR DEBAJO de las vías, el agua y los parques del modelo (y = 0): así ellos nunca quedan tapados por la foto
   T.tilesDy = T.sueloY; T.tilesLuz = 1; T.tilesCalib = 0; T.tilesT = 0; T.tilesAtrib = 0;
   aplicarMalla(T, tiles);
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
@@ -946,6 +949,8 @@ async function crearMallaGoogle(T) {
 
   // La foto de Google es solo el FONDO: tiene errores de altura de varios metros (copas y techos suben el suelo) y taparía las vías, el agua, los parques,
   // los árboles y los carros del modelo. Tras dibujarla se borra la profundidad, así todo lo propio se ve siempre encima y se ordena solo entre sí.
+  // En modo REALISTA no se borra: la malla de Google es el mundo (con su profundidad real) y los carros, peatones y aves quedan dentro de ella.
+  if (REALISTA) return;
   const cd = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
   cd.frustumCulled = false; cd.renderOrder = -5; cd.onBeforeRender = (r) => r.clearDepth(); T.scene.add(cd);
 }
@@ -1011,9 +1016,25 @@ function aplicarMalla(T, tiles) {
 // pone el suelo fotográfico justo debajo de lo que dibuja la Maqueta (carros, árboles), midiendo la altura real de la malla alrededor de la cámara
 function calibrarMalla(T) {
   const st = T.tiles.stats;
-  if (st.downloading > 0 || st.parsing > 0) return false; // las teselas gruesas (baja resolución) tienen kilómetros de error: se mide solo con el detalle ya cargado
+  if (REALISTA ? (st.downloading + st.parsing > 6 || T.tiles.errorTarget > 20) : (st.downloading > 0 || st.parsing > 0)) return false; // las teselas gruesas (baja resolución) tienen kilómetros de error: se mide solo con el detalle ya cargado
   const THREE = T.THREE, rc = new THREE.Raycaster(), o = T.orbit.target, hits = [];
   rc.firstHitOnly = true;
+  const V = REALISTA && TRAF && TRAF.vis;
+  if (V && V.n) { // realista: se mide el suelo de la foto justo debajo de los carros (las vías), así quedan apoyados sobre el asfalto real
+    const abajo = new THREE.Vector3(0, -1, 0), p = new THREE.Vector3();
+    for (let i = 0; i < V.n && hits.length < 40; i += 3) {
+      if (Math.hypot(V.x[i] - o.x, V.z[i] - o.z) > 600) continue;
+      rc.set(p.set(V.x[i], 300, V.z[i]), abajo);
+      const h = rc.intersectObject(T.tiles.group, true)[0];
+      if (h && Math.abs(h.point.y - T.tilesDy) < 60) hits.push(h.point.y);
+    }
+    if (hits.length >= 8) {
+      hits.sort((a, b) => a - b);
+      T.tilesDy += T.sueloY - hits[Math.floor(hits.length * 0.2)]; aplicarMalla(T); // percentil bajo: el carro nunca queda enterrado (a lo sumo flota unos centímetros)
+      T.calibXZ = [o.x, o.z];
+      return true;
+    }
+  }
   // muchos puntos y percentil BAJO: los techos y las copas quedan arriba, el suelo abajo (la mediana medía los techos y hundía la malla 19 m)
   for (const r of [0, 100, 200, 320]) for (let a = 0; a < (r ? 8 : 1); a++) {
     rc.set(new THREE.Vector3(o.x + r * Math.cos(a * 0.785), 800, o.z + r * Math.sin(a * 0.785)), new THREE.Vector3(0, -1, 0));
@@ -1049,7 +1070,7 @@ function actualizarMallaIn(T, tl, dt) {
   actualizarOrto(T);
   if (!T.mallaMostrada) {
     const st = tl.stats, listo = st.downloading === 0 && st.parsing === 0 && st.visible > 8;
-    if (listo || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; marcarPaso('foto'); }
+    if (listo || REALISTA || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; marcarPaso('foto'); }
     else tl.group.visible = false;
   }
   if (tl.errorTarget > T.errMeta && tl.stats.downloading === 0 && tl.stats.parsing === 0 && tl.stats.visible > 3) tl.errorTarget = Math.max(T.errMeta, Math.round(tl.errorTarget * 0.62));
@@ -1061,6 +1082,7 @@ function actualizarMallaIn(T, tl, dt) {
   if (T.sombra) T.sombra.position.set(Math.round(o.x / 40) * 40, -0.2, Math.round(o.z / 40) * 40);
   T.tilesT += dt;
   if (T.tilesCalib < 3 && T.tilesT > [1.5, 6, 16][T.tilesCalib]) { if (calibrarMalla(T)) T.tilesCalib++; else T.tilesT = 0; }
+  else if (REALISTA && T.calibXZ && T.tilesT > 4 && Math.hypot(o.x - T.calibXZ[0], o.z - T.calibXZ[1]) > 700) { T.tilesT = 0; calibrarMalla(T); } // al ir a otra zona se vuelve a medir el suelo
   if ((T.tilesAtrib -= dt) <= 0) {
     T.tilesAtrib = 1.5;
     try { const t = tl.getAttributions().filter(a => a.type === 'string').map(a => a.value).join(' · '); $('atrib').textContent = /^google/i.test(t) ? t : 'Google' + (t ? ' · ' + t : ''); } catch (e) {}
@@ -1180,9 +1202,10 @@ async function initTodoReal() {
     const EI = await pEdifIdx;
     const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
     const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
-    if (!(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
+    if (!REALISTA && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
     let B = [];
-    if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
+    if (REALISTA) {} // los edificios son los de la foto de Google
+    else if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
     else if (!LIVIANO) {
       const tx = 6675, ty = 3300; // punto que mira la cámara al abrir (avenida con tráfico)
       const cel = EI.celdas.slice().sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
@@ -1203,8 +1226,10 @@ async function initTodoReal() {
     const realOK = !!(T3.R && T3.env);
     // 1) lo liviano primero, para que el mundo aparezca ya: árboles de planos cruzados, agua, parques (suelo de pasto), vías y aves
     // con los modelos reales NO se dibujan árboles de planos cruzados (se ven como imagen plana): sólo son el respaldo si fallan
-    if (!realOK) await buildTreesReal(THREE, T);
-    buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
+    if (!REALISTA) {
+      if (!realOK) await buildTreesReal(THREE, T);
+      buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
+    }
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -1216,13 +1241,14 @@ async function initTodoReal() {
       if (!$('b-aves').classList.contains('on')) api.grp.visible = false;
     }).catch(e => { console.warn('aves 3D:', e); buildAves(THREE); });
     abrirPortada(); // se abre en cuanto están los edificios y las capas; lo demás termina de bajar con la píldora de arriba
-    say('🧱 TODO 3D listo · ' + B.length.toLocaleString('es-CO') + ' edificios · cargando árboles 3D y tráfico…', 5000);
+    say(REALISTA ? 'Kennedy fotorrealista · cargando la malla 3D de Google y el tráfico…' : '🧱 TODO 3D listo · ' + B.length.toLocaleString('es-CO') + ' edificios · cargando árboles 3D y tráfico…', 5000);
     // 2) lo pesado se carga después, en segundo plano y sin bloquear (si algo falla queda lo liviano)
     const pastoRespaldo = () => {
       try { buildReeds(THREE, W); } catch (e) { console.warn('reeds:', e); }
       try { buildGrass(THREE, P, W); } catch (e) { console.warn('grass:', e); }
     };
     (async () => {
+      if (REALISTA) { T3.trees = null; marcarPaso('arboles'); T3.arbolesOk(); return; } // árboles, pasto y agua: los de la foto de Google
       if (!realOK) { pastoRespaldo(); marcarPaso('arboles'); T3.arbolesOk(); return; }
       try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
       try {
@@ -2482,7 +2508,13 @@ function todoNight(on) {
     if (T3.skyU) { T3.skyU.top.value.set(DIA.top); T3.skyU.mid.value.set(DIA.mid); T3.skyU.bot.value.set(DIA.bot); T3.skyU.uCloud.value = DIA.nubes; T3.skyU.uGlow.value = 1.0; }
   }
 }
-$('b-todo').onclick = async () => { setMode('todo'); };
+// botón de abajo: cambia entre la vista fotorrealista (malla de Google completa) y la maqueta propia
+{
+  const b = $('b-todo'), ic = b.querySelector('svg').outerHTML;
+  b.innerHTML = ic + (REALISTA ? 'Maqueta' : 'Fotorreal'); b.classList.remove('on');
+  b.title = REALISTA ? 'Ver la maqueta propia (edificios, vías y árboles del modelo)' : 'Ver Kennedy fotorrealista (malla 3D de Google)';
+  b.onclick = () => { const u = new URL(location.href); if (REALISTA) u.searchParams.set('maqueta', '1'); else u.searchParams.delete('maqueta'); location.href = u.toString(); };
+}
 
 /* ============ MODO PÁJARO · juego de vuelo + realidad virtual (data3d/pajaro.js) ============ */
 // simulación compartida: lo mismo que hace el vuelo normal, pero con la posición del pájaro (en VR la cámara va dentro de un "rig")
@@ -2673,7 +2705,7 @@ $('b-hd').onclick = async () => {
   }
 };
 
-import('./data3d/simulador.js?v=2').then(m => {
+import('./data3d/simulador.js?v=3').then(m => {
   SIM = m.crearSimulador({
     T3: () => T3, traf: () => TRAF, peat: () => PEAT, pajaro: () => PAJARO, say, movil: MOVIL,
     mundoALL: (x, z) => dataToLL(x + LC.x, LC.y - z), // [lng, lat] del punto del mundo 3D

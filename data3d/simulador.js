@@ -371,7 +371,7 @@ export function crearSimulador(ctx) {
     if (S.det) {
       const ac = S.modo === 2 ? '#c8ffd0' : '#00d4ff', pc = S.modo === 2 ? '#c8ffd0' : '#9cff57';
       g2.lineWidth = 1.2; g2.font = '600 10px "JetBrains Mono",ui-monospace,monospace'; g2.textBaseline = 'bottom';
-      let nl = 0; const NL = ctx.movil ? 6 : 16;
+      let nl = 0; const NL = ctx.movil ? 5 : 10;
       for (let k = 0; k < proy.length && k < MAXB; k++) {
         const p = proy[k]; if (!p.peat && S.track && p.id === S.track.id) continue;
         const r = p.r, l = Math.max(3, r * 0.42);
