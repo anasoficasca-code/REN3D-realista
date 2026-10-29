@@ -1298,7 +1298,8 @@ async function initTodoReal() {
         wm.customProgramCacheKey = () => 'aguaHumedalFoto'; wm.needsUpdate = true;
       } // realista: el agua, el pasto y el suelo son los de la foto; los árboles 3D sí van encima (como en Umbra)
       if (GOOGLE) { T3.trees = null; marcarPaso('arboles'); T3.arbolesOk(); return; } // árboles: los de la malla de Google
-      if (REALISTA) { try { T3.trees = buildCopas(THREE, T); T3.counts.t = T.t.length; } catch (e) { console.warn('copas:', e); T3.trees = null; } marcarPaso('arboles'); T3.arbolesOk(); return; }
+      // copas simplificadas solo con ?copas=1: los modelos reales de Poly Haven (hojas y ramas) se ven mucho más reales
+      if (REALISTA && new URLSearchParams(location.search).get('copas') === '1') { try { T3.trees = buildCopas(THREE, T); T3.counts.t = T.t.length; } catch (e) { console.warn('copas:', e); T3.trees = null; } marcarPaso('arboles'); T3.arbolesOk(); return; }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
         T3.counts.t = T.t.length;
