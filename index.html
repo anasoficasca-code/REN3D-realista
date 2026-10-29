@@ -834,7 +834,7 @@ const REALISTA = new URLSearchParams(location.search).get('maqueta') !== '1';
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
-  fondo: 0xa9cbe6, niebla: 0xcfdde8, densNiebla: 0.000055, // bruma ligera: los cerros a 10-20 km se ven con perspectiva atmosférica // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
+  fondo: 0xa9cbe6, niebla: REALISTA ? 0xb4cbe2 : 0xcfdde8, densNiebla: REALISTA ? 0.00007 : 0.000055, // realista: bruma azulada de perspectiva aérea, como en los renders de Umbra // bruma ligera: los cerros a 10-20 km se ven con perspectiva atmosférica // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
   top: 0x2a6fc4, mid: 0x74afe3, bot: 0xdbe6ea, nubes: 0.5,
   hemiCielo: 0xb4d3ff, hemiSuelo: 0x7a6f4a, hemi: 0.86, // luz de cielo azulada arriba y rebote cálido del suelo
   solColor: 0xffe6bf, sol: 3.0, exposicion: 1.0 // sol cálido y fuerte: más contraste entre luz y sombra
@@ -898,14 +898,15 @@ async function crearMallaGoogle(T) {
   const q = dataToLL(LC.x, LC.y), D2R = Math.PI / 180;
   const frame = new THREE.Matrix4();
   TR.WGS84_ELLIPSOID.getEastNorthUpFrame(q[1] * D2R, q[0] * D2R, frame);
-  frame.multiply(new THREE.Matrix4().makeTranslation(0, 0, 2548)); // altura elipsoidal medida del suelo de Kennedy; luego se calibra fino
+  frame.multiply(new THREE.Matrix4().makeTranslation(0, 0, REALISTA ? 2564 : 2548)); // realista: medido bajo los carros, el asfalto de la foto está ~16 m más arriba // altura elipsoidal medida del suelo de Kennedy; luego se calibra fino
   T.tilesM = new THREE.Matrix4().makeRotationX(-Math.PI / 2).multiply(frame.invert());
   T.sueloY = REALISTA ? 0.3 : -1.8; // realista: el suelo de la foto queda justo bajo las ruedas de los carros (0,64) y los pies de los peatones. Maqueta: la foto del suelo queda ~2 m POR DEBAJO de las vías, el agua y los parques del modelo (y = 0): así ellos nunca quedan tapados por la foto
   T.tilesDy = T.sueloY; T.tilesLuz = 1; T.tilesCalib = 0; T.tilesT = 0; T.tilesAtrib = 0;
   aplicarMalla(T, tiles);
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
   // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
-  T.maskU = { uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 } };
+  T.maskU = { uGrade: { value: REALISTA ? new THREE.Vector4(1.2, 0.9, 1.22, 1) : new THREE.Vector4(1, 1, 1, 0) }, uTint: { value: REALISTA ? new THREE.Vector3(1.04, 1.0, 0.93) : new THREE.Vector3(1, 1, 1) }, // saturación, contraste, brillo, quitar bruma · tinte
+    uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 } };
   const recorte = (m) => {
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, T.maskU);
@@ -913,14 +914,24 @@ async function crearMallaGoogle(T) {
         .replace('#include <common>', '#include <common>\nvarying vec3 vWPm;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPm = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim; uniform vec4 uGrade; uniform vec3 uTint;')
+        // gradación tipo render de maqueta (Umbra): quita la bruma gris de la foto aérea, sube saturación y contraste y la calienta un poco
+        .replace('#include <opaque_fragment>', `{
+          vec3 c = max(outgoingLight - uGrade.w * vec3(0.030, 0.036, 0.048), 0.0) / (1.0 - uGrade.w * 0.04);
+          float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+          c = max(mix(vec3(l), c, uGrade.x), 0.0);
+          c += uGrade.w * vec3(0.026, 0.032, 0.046) * (1.0 - smoothstep(0.0, 0.16, l)); // sombras abiertas y azuladas (luz de cielo), no negras
+          c = pow(c / 0.18, vec3(uGrade.y)) * 0.18 * uGrade.z * uTint;
+          outgoingLight = c;
+        }
+        #include <opaque_fragment>`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
           if (uOn > 0.5 && vWPm.y > uCut) {
             vec2 mu = vec2((vWPm.x + uLC.x) * uDim.x, 1.0 - (uLC.y - vWPm.z) * uDim.y);
             if (mu.x > 0.0 && mu.x < 1.0 && mu.y > 0.0 && mu.y < 1.0 && texture2D(uMask, mu).r < 0.5) discard;
           }`);
     };
-    m.customProgramCacheKey = () => 'recorteHuellas';
+    m.customProgramCacheKey = () => 'recorteHuellasG';
     m.needsUpdate = true;
   };
   T.tilesCargadas = 0;
@@ -1248,16 +1259,15 @@ async function initTodoReal() {
       try { buildGrass(THREE, P, W); } catch (e) { console.warn('grass:', e); }
     };
     (async () => {
-      if (REALISTA) { T3.trees = null; marcarPaso('arboles'); T3.arbolesOk(); return; } // árboles, pasto y agua: los de la foto de Google
-      if (!realOK) { pastoRespaldo(); marcarPaso('arboles'); T3.arbolesOk(); return; }
-      try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
+      if (!realOK) { if (REALISTA) T3.trees = null; else pastoRespaldo(); marcarPaso('arboles'); T3.arbolesOk(); return; }
+      if (!REALISTA) try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); } // realista: el agua, el pasto y el suelo son los de la foto; los árboles 3D sí van encima (como en Umbra)
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
       } catch (e) { console.warn('arboles reales:', e); T3.trees = null; try { await buildTreesReal(THREE, T); } catch (e2) { console.warn('trees:', e2); } }
       marcarPaso('arboles'); T3.arbolesOk();
-      try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
+      if (!REALISTA) try { if (!T3.movil) T3.plants = await T3.R.buildNearPlants(T3, W, lw, T3.env, P); } // en celular no se descargan las plantas 3D (varios MB)
       catch (e) { console.warn('pasto 3D:', e); pastoRespaldo(); }
     })();
     pTraf.then(e => { if (e) { console.warn('traffic:', e); try { buildCars(THREE, N); } catch (e2) { console.warn('cars:', e2); } marcarPaso('trafico'); } });    return true;
@@ -2196,6 +2206,10 @@ function flyTodo(i, instant) {
   const v = p.vista || [320, 190, 400]; // vista de cada punto (desplazamiento x, altura, desplazamiento z); el humedal arranca cerca y de frente
   const p1 = new T3.THREE.Vector3(w[0] + v[0], v[1], w[1] + v[2]);
   const c1 = new T3.THREE.Vector3(w[0] + (p.mira ? p.mira[0] : 0), 0, w[1] + (p.mira ? p.mira[1] : 0));
+  if (REALISTA) { // encuadre tipo maqueta de Umbra: dron a ~270 m, mirando ~30° hacia abajo, en la misma dirección de la vista del punto
+    const h = new T3.THREE.Vector3(p1.x - c1.x, 0, p1.z - c1.z); if (h.lengthSq() < 1) h.set(0.24, 0, 0.97); h.normalize();
+    p1.copy(c1).addScaledVector(h, 560); p1.y = 230; // ~22° hacia abajo: entran el horizonte y los cerros, como en Umbra
+  }
   if (instant) {
     T3.camera.position.copy(p1); T3.orbit.target.copy(c1); T3.anim = null;
   } else {
@@ -2705,7 +2719,7 @@ $('b-hd').onclick = async () => {
   }
 };
 
-import('./data3d/simulador.js?v=3').then(m => {
+import('./data3d/simulador.js?v=4').then(m => {
   SIM = m.crearSimulador({
     T3: () => T3, traf: () => TRAF, peat: () => PEAT, pajaro: () => PAJARO, say, movil: MOVIL,
     mundoALL: (x, z) => dataToLL(x + LC.x, LC.y - z), // [lng, lat] del punto del mundo 3D

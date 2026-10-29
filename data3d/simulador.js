@@ -116,7 +116,7 @@ const HTML = `
     <div class="g-pan"><h3>SENSOR <em id="g-keys">1-4</em></h3>
       <div class="g-seg" id="g-sens"><button data-m="0" class="on">Normal</button><button data-m="1">CRT</button><button data-m="2">NVG</button><button data-m="3">FLIR</button></div>
       <div class="g-row"><button id="g-pal" style="grid-column:1/3">Paleta: blanco caliente</button></div>
-      <div class="g-row"><button id="g-det" class="on">Detección</button><button id="g-lbl" class="on">Etiquetas</button></div>
+      <div class="g-row"><button id="g-det">Detección</button><button id="g-lbl" class="on">Etiquetas</button></div>
       <div class="g-row"><button id="g-cen">Cenital</button><button id="g-obl">Oblicua</button></div>
     </div>
   </section>
@@ -211,7 +211,7 @@ export function crearSimulador(ctx) {
   document.body.insertAdjacentHTML('beforeend', HTML);
   const $ = (id) => document.getElementById(id);
   const ui = $('gevUI'), det = $('gevDet'), g2 = det.getContext('2d');
-  const S = { modo: 0, pal: 0, det: true, lbl: true, track: null, proy: [], hist: [], spark: [], tSpark: 0, tLista: 0, tHud: 0, rec: 0, quad: null };
+  const S = { modo: 0, pal: 0, det: false, lbl: true, track: null, proy: [], hist: [], spark: [], tSpark: 0, tLista: 0, tHud: 0, rec: 0, quad: null };
   const pad = (n, k = 2) => String(Math.floor(n)).padStart(k, '0');
   const hms = (s) => { s = ((Math.floor(s) % 86400) + 86400) % 86400; return pad(s / 3600) + ':' + pad(s / 60 % 60) + ':' + pad(s % 60); };
   const dms = (v, p, n) => { const a = Math.abs(v), d = Math.floor(a), m = Math.floor((a - d) * 60), s = ((a - d) * 60 - m) * 60; return d + '°' + pad(m) + "'" + s.toFixed(1).padStart(4, '0') + '"' + (v >= 0 ? p : n); };
