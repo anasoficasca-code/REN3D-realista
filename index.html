@@ -1459,15 +1459,20 @@ function texturasFachada(THREE, renderer) {
     }
     for (let fy = 0; fy < 4; fy++) {
       const piso = fy * M + M; // borde inferior de la celda (v crece hacia arriba)
-      rect(0, piso - 0.22 * pm, S, 0.22 * pm, ladrillo ? '#e9e5dd' : '#d9d4ca', 0.8, 0.72); // placa saliente
+      // placa: franja delgada de concreto gris, apenas más clara que el muro (la franja blanca gruesa se veía de juguete)
+      rect(0, piso - 0.12 * pm, S, 0.12 * pm, ladrillo ? '#8f8a82' : '#cfc9bf', 0.7, 0.8);
       for (let cx = 0; cx < 4; cx++) {
-        const w = 1.35 * pm, h = 1.4 * pm, x = cx * M + (M - w) / 2, yb = piso - 0.22 * pm - 0.9 * pm, y = yb - h, fr = Math.max(2, 0.07 * pm);
-        rect(x - fr, y - fr, w + 2 * fr, h + 2 * fr, '#f4f2ee', 0.72, 0.45); // marco
-        rect(x - fr * 2, yb + fr, w + fr * 4, fr * 1.3, '#e7e2d8', 0.85, 0.6); // alféizar
-        const cort = rnd(), gv = g.createLinearGradient(0, y, 0, yb); // vidrio metido en el muro: reflejo del cielo arriba, interior oscuro abajo (algunos con cortina)
-        gv.addColorStop(0, cort > 0.75 ? '#b9ad98' : '#8fa7bc'); gv.addColorStop(0.55, cort > 0.75 ? '#8a7e6c' : '#3d4b58'); gv.addColorStop(1, '#232a31');
-        rect(x, y, w, h, '#000', 0.12, cort > 0.75 ? 0.6 : 0.06); g.fillStyle = gv; g.fillRect(x, y, w, h);
-        rect(x + w / 2 - fr / 2, y, fr, h, '#f4f2ee', 0.66, 0.45); rect(x, y + h * 0.38, w, fr * 0.8, '#f4f2ee', 0.66, 0.45); // parteluz y travesaño
+        // ventana bogotana: vidrio oscuro con reflejo del cielo, marco de aluminio gris oscuro delgado, sin cruz blanca;
+        // cada ventana distinta (más o menos reflejo, cortina clara u oscura, alguna abierta)
+        const w = 1.2 * pm, h = 1.25 * pm, x = cx * M + (M - w) / 2, yb = piso - 0.12 * pm - 0.95 * pm, y = yb - h, fr = Math.max(1, 0.035 * pm);
+        rect(x - fr, y - fr, w + 2 * fr, h + 2 * fr, '#4a4d50', 0.55, 0.4); // marco de aluminio
+        rect(x - fr, yb + fr, w + fr * 2, fr * 1.6, ladrillo ? '#7d776f' : '#bdb7ad', 0.6, 0.8); // alféizar de concreto, discreto
+        const r1 = rnd(), r2 = rnd(), gv = g.createLinearGradient(x, y, x + w * 0.4, yb);
+        const cielo = `rgb(${Math.round(70 + 60 * r1)},${Math.round(84 + 62 * r1)},${Math.round(98 + 66 * r1)})`; // reflejo del cielo
+        const dentro = r2 > 0.8 ? '#6d6253' : r2 > 0.6 ? '#3b3a37' : '#1b1f23'; // cortina clara, cortina oscura o interior
+        gv.addColorStop(0, cielo); gv.addColorStop(0.45 + 0.2 * r1, dentro); gv.addColorStop(1, '#16191c');
+        rect(x, y, w, h, '#000', 0.2, 0.05); g.fillStyle = gv; g.fillRect(x, y, w, h);
+        rect(x + w * (0.48 + 0.04 * r2), y, Math.max(1, fr * 0.8), h, '#3e4144', 0.5, 0.4); // unión de las dos hojas correderas
       }
     }
     return { c: tex(cC, true), n: tex(normales(gh, MOVIL ? 2.5 : 4), false), r: tex(cR, false) };
