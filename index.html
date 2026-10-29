@@ -1214,10 +1214,11 @@ async function initTodoReal() {
     const EI = await pEdifIdx;
     const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
     const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
-    if (!REALISTA && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
+    if (!(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
     let B = [];
-    if (REALISTA) {} // los edificios son los de la foto de Google
-    else if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
+    // edificios 3D propios (huellas y alturas reales) también en la vista fotorrealista: la malla de Google en Kennedy los trae
+    // casi planos ("derretidos"); como en las maquetas de Umbra, se levantan volúmenes limpios y el techo toma el color de la foto aérea
+    if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
     else if (!LIVIANO) {
       const tx = 6675, ty = 3300; // punto que mira la cámara al abrir (avenida con tráfico)
       const cel = EI.celdas.slice().sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
@@ -1279,8 +1280,17 @@ async function initTodoReal() {
     return false;
   }
 }
+// vista realista (tipo Umbra): colores de Kennedy en sRGB, pasados a lineal (antes un ladrillo 0,62 lineal se veía casi blanco).
+// Conjuntos altos casi todos en ladrillo a la vista; casas bajas pintadas (blanco, crema, salmón, verde agua) o en ladrillo.
+const PAL_ALTO = [[0.64, 0.34, 0.23], [0.58, 0.31, 0.21], [0.70, 0.42, 0.30], [0.66, 0.37, 0.26], [0.86, 0.82, 0.74], [0.60, 0.33, 0.24], [0.76, 0.74, 0.70]];
+const PAL_BAJO = [[0.64, 0.35, 0.24], [0.90, 0.88, 0.82], [0.88, 0.80, 0.66], [0.86, 0.62, 0.52], [0.66, 0.78, 0.74], [0.70, 0.40, 0.28], [0.92, 0.90, 0.86], [0.80, 0.74, 0.58]];
+const lin = (c) => c.map(x => Math.pow(x, 2.2));
 function bColor(h, i) {
   const v = ((i * 2654435761) % 1000) / 1000;
+  if (REALISTA) {
+    const P = h > 7 ? PAL_ALTO : PAL_BAJO, c = P[Math.floor(v * P.length) % P.length], t = 0.92 + ((i * 40503) % 100) / 625;
+    return { w: lin(c.map(x => Math.min(1, x * t))), r: lin(h <= 7 ? [0.62, 0.36, 0.28] : [0.50, 0.50, 0.52]) }; // el techo luego toma el color de la foto aérea
+  }
   // paleta de proyecto residencial: blanco crema, ladrillo terracota, gris cálido y arena (como las maquetas de referencia)
   const PAL = [[0.93, 0.91, 0.85], [0.80, 0.55, 0.41], [0.86, 0.85, 0.81], [0.75, 0.69, 0.61], [0.91, 0.87, 0.79], [0.72, 0.47, 0.36]];
   const c = PAL[Math.floor(v * PAL.length) % PAL.length], t = 0.95 + ((i * 40503) % 100) / 1000;
