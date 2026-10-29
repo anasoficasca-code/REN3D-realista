@@ -1242,7 +1242,7 @@ async function initTodoReal() {
     if (!REALISTA) {
       if (!realOK) await buildTreesReal(THREE, T);
       buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    }
+    } else buildWater(THREE, W); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -1262,7 +1262,10 @@ async function initTodoReal() {
     };
     (async () => {
       if (!realOK) { if (REALISTA) T3.trees = null; else pastoRespaldo(); marcarPaso('arboles'); T3.arbolesOk(); return; }
-      if (!REALISTA) try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); } // realista: el agua, el pasto y el suelo son los de la foto; los árboles 3D sí van encima (como en Umbra)
+      try { T3.R.upgradeWater(T3, T3.env); } catch (e) { console.warn('agua real:', e); }
+      if (REALISTA && T3.waterMesh) { // un metro arriba y adelantada en profundidad: el suelo de la foto de Google varía y la tapaba a trozos
+        T3.waterMesh.position.y += 1.0; const wm = T3.waterMesh.material; wm.polygonOffset = true; wm.polygonOffsetFactor = -2; wm.polygonOffsetUnits = -8;
+      } // realista: el agua, el pasto y el suelo son los de la foto; los árboles 3D sí van encima (como en Umbra)
       if (REALISTA) { try { T3.trees = buildCopas(THREE, T); T3.counts.t = T.t.length; } catch (e) { console.warn('copas:', e); T3.trees = null; } marcarPaso('arboles'); T3.arbolesOk(); return; }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
@@ -1361,31 +1364,50 @@ async function agregarEdificiosMedio() {
 function texturasFachada(THREE, renderer) {
   const S = MOVIL ? 512 : 1024, M = S / 4, pm = M / 3.05; // píxeles por módulo y por metro
   const rnd = mulberry32(7);
+  // PBR generado: se dibuja a la vez el COLOR, la ALTURA (de ella sale el mapa de normales: juntas hundidas, ventanas metidas en el muro,
+  // marcos y placa salientes) y la RUGOSIDAD (ladrillo mate, vidrio liso que refleja el cielo)
+  const lienzo = () => { const cv = document.createElement('canvas'); cv.width = cv.height = S; return [cv, cv.getContext('2d', { willReadFrequently: true })]; };
+  const gris = (v) => { const k = Math.round(Math.max(0, Math.min(1, v)) * 255); return `rgb(${k},${k},${k})`; };
+  const tex = (cv, srgb) => {
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+  };
+  const normales = (ctxH, fuerza) => { // mapa de normales en espacio tangente desde la altura (v hacia arriba = fila de arriba del lienzo)
+    const h = ctxH.getImageData(0, 0, S, S).data, [cv, g] = lienzo(), im = g.createImageData(S, S), o = im.data, H = (x, y) => h[(((y + S) % S) * S + ((x + S) % S)) * 4] / 255;
+    for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+      const du = (H(x + 1, y) - H(x - 1, y)) * fuerza, dv = (H(x, y - 1) - H(x, y + 1)) * fuerza, l = Math.hypot(du, dv, 1), i = (y * S + x) * 4;
+      o[i] = (-du / l * 0.5 + 0.5) * 255; o[i + 1] = (-dv / l * 0.5 + 0.5) * 255; o[i + 2] = (1 / l * 0.5 + 0.5) * 255; o[i + 3] = 255;
+    }
+    g.putImageData(im, 0, 0); return cv;
+  };
   const pintar = (ladrillo) => {
-    const cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d');
-    if (ladrillo) { // hiladas de ladrillo trabado con juntas claras
-      g.fillStyle = '#c9b8a6'; g.fillRect(0, 0, S, S);
+    const [cC, g] = lienzo(), [cH, gh] = lienzo(), [cR, gr] = lienzo();
+    const rect = (x, y, w, h, col, alt, rug) => { g.fillStyle = col; g.fillRect(x, y, w, h); gh.fillStyle = gris(alt); gh.fillRect(x, y, w, h); gr.fillStyle = gris(rug); gr.fillRect(x, y, w, h); };
+    if (ladrillo) { // hiladas de ladrillo trabado: junta clara y hundida, cada ladrillo con su tono y su rugosidad
+      rect(0, 0, S, S, '#c9b8a6', 0.35, 0.95);
       const hb = Math.max(2, 0.075 * pm), lb = 0.25 * pm;
       for (let y = 0, f = 0; y < S; y += hb, f++) for (let x = -(f % 2) * lb / 2; x < S; x += lb) {
-        const k = 0.86 + rnd() * 0.22; g.fillStyle = `rgb(${Math.round(166 * k)},${Math.round(88 * k)},${Math.round(60 * k)})`;
-        g.fillRect(x + 0.6, y + 0.6, lb - 1.2, hb - 1.2);
+        const k = 0.86 + rnd() * 0.22;
+        rect(x + 0.6, y + 0.6, lb - 1.2, hb - 1.2, `rgb(${Math.round(166 * k)},${Math.round(88 * k)},${Math.round(60 * k)})`, 0.62 + rnd() * 0.08, 0.78 + rnd() * 0.14);
       }
-    } else { g.fillStyle = '#f1eee8'; g.fillRect(0, 0, S, S); for (let i = 0; i < S * 6; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.035})`; g.fillRect(rnd() * S, rnd() * S, 2, 2); } }
+    } else { // pañete pintado con grano fino
+      rect(0, 0, S, S, '#f1eee8', 0.6, 0.86);
+      for (let i = 0; i < S * 6; i++) { const x = rnd() * S, y = rnd() * S, a = rnd(); g.fillStyle = `rgba(0,0,0,${a * 0.035})`; g.fillRect(x, y, 2, 2); gh.fillStyle = gris(0.56 + a * 0.08); gh.fillRect(x, y, 2, 2); }
+    }
     for (let fy = 0; fy < 4; fy++) {
-      const y0 = fy * M, piso = y0 + M; // piso = borde inferior de la celda (v crece hacia arriba)
-      g.fillStyle = ladrillo ? '#e9e5dd' : '#d9d4ca'; g.fillRect(0, piso - 0.22 * pm, S, 0.22 * pm); // franja de placa
+      const piso = fy * M + M; // borde inferior de la celda (v crece hacia arriba)
+      rect(0, piso - 0.22 * pm, S, 0.22 * pm, ladrillo ? '#e9e5dd' : '#d9d4ca', 0.8, 0.72); // placa saliente
       for (let cx = 0; cx < 4; cx++) {
         const w = 1.35 * pm, h = 1.4 * pm, x = cx * M + (M - w) / 2, yb = piso - 0.22 * pm - 0.9 * pm, y = yb - h, fr = Math.max(2, 0.07 * pm);
-        g.fillStyle = '#f4f2ee'; g.fillRect(x - fr, y - fr, w + 2 * fr, h + 2 * fr); // marco
-        g.fillStyle = '#e7e2d8'; g.fillRect(x - fr * 2, yb + fr, w + fr * 4, fr * 1.3); // alféizar
-        const cort = rnd(), gr = g.createLinearGradient(0, y, 0, yb); // vidrio: reflejo del cielo arriba, interior oscuro abajo (algunos con cortina)
-        gr.addColorStop(0, cort > 0.75 ? '#b9ad98' : '#8fa7bc'); gr.addColorStop(0.55, cort > 0.75 ? '#8a7e6c' : '#3d4b58'); gr.addColorStop(1, '#232a31');
-        g.fillStyle = gr; g.fillRect(x, y, w, h);
-        g.fillStyle = '#f4f2ee'; g.fillRect(x + w / 2 - fr / 2, y, fr, h); g.fillRect(x, y + h * 0.38, w, fr * 0.8); // parteluz y travesaño
+        rect(x - fr, y - fr, w + 2 * fr, h + 2 * fr, '#f4f2ee', 0.72, 0.45); // marco
+        rect(x - fr * 2, yb + fr, w + fr * 4, fr * 1.3, '#e7e2d8', 0.85, 0.6); // alféizar
+        const cort = rnd(), gv = g.createLinearGradient(0, y, 0, yb); // vidrio metido en el muro: reflejo del cielo arriba, interior oscuro abajo (algunos con cortina)
+        gv.addColorStop(0, cort > 0.75 ? '#b9ad98' : '#8fa7bc'); gv.addColorStop(0.55, cort > 0.75 ? '#8a7e6c' : '#3d4b58'); gv.addColorStop(1, '#232a31');
+        rect(x, y, w, h, '#000', 0.12, cort > 0.75 ? 0.6 : 0.06); g.fillStyle = gv; g.fillRect(x, y, w, h);
+        rect(x + w / 2 - fr / 2, y, fr, h, '#f4f2ee', 0.66, 0.45); rect(x, y + h * 0.38, w, fr * 0.8, '#f4f2ee', 0.66, 0.45); // parteluz y travesaño
       }
     }
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+    return { c: tex(cC, true), n: tex(normales(gh, MOVIL ? 2.5 : 4), false), r: tex(cR, false) };
   };
   return { ladrillo: pintar(true), pintado: pintar(false) };
 }
@@ -1395,7 +1417,11 @@ function materialEdificios(THREE) {
   const mat = LIVIANO ? new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true }) // celular/gafas: material barato
     : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true, roughness: 0.86, metalness: 0, envMap: T3.env || null, envMapIntensity: 0.55 });
   T3.roofU = { uOrto: { value: null }, uOrtoVP: { value: new THREE.Matrix4() }, uOrtoOn: { value: 0 } };
-  if (REALISTA) { const tx = texturasFachada(THREE, T3.renderer); T3.roofU.tFachB = { value: tx.ladrillo }; T3.roofU.tFachP = { value: tx.pintado }; }
+  if (REALISTA) {
+    const tx = texturasFachada(THREE, T3.renderer);
+    Object.assign(T3.roofU, { tFachB: { value: tx.ladrillo.c }, tFachP: { value: tx.pintado.c }, tFachBN: { value: tx.ladrillo.n }, tFachPN: { value: tx.pintado.n }, tFachBR: { value: tx.ladrillo.r }, tFachPR: { value: tx.pintado.r } });
+  }
+  const PBR = REALISTA && !LIVIANO; // normales y rugosidad solo con el material estándar (en celular/gafas el material barato no las usa)
   const FACHADA = REALISTA ? `{
         float L = vWl.z, H = vWl.w;
         if (L > 1.2 && H > 2.4 && vWP.y > 0.05 && vWP.y < H - 0.12) {
@@ -1407,6 +1433,7 @@ function materialEdificios(THREE) {
           vec3 fb = texture2D(tFachB, tuv).rgb * clamp(base / vec3(0.375, 0.093, 0.039), 0.75, 1.3);
           vec3 fp = texture2D(tFachP, tuv).rgb * base * 1.12;
           diffuseColor.rgb = mix(fp, fb, lad);
+          gTuv = tuv; gLad = lad; gF = 1.0;
         }}` : null;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, T3.roofU);
@@ -1414,8 +1441,9 @@ function materialEdificios(THREE) {
       .replace('#include <common>', '#include <common>\nattribute vec4 wall;\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpv = modelMatrix * vec4(position, 1.0); vWP = wpv.xyz; vWs = wpv.xz; vWl = wall;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn;' + (FACHADA ? '\nuniform sampler2D tFachB, tFachP;' : ''))
+      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn;' + (FACHADA ? '\nuniform sampler2D tFachB, tFachP, tFachBN, tFachPN, tFachBR, tFachPR;' : ''))
       .replace('#include <color_fragment>', `#include <color_fragment>
+      vec2 gTuv = vec2(0.0); float gLad = 0.0, gF = 0.0; // coordenadas de la fachada, para la rugosidad y las normales PBR
       {
         ${FACHADA || ''}
         float L = vWl.z, H = vWl.w;
@@ -1462,8 +1490,17 @@ function materialEdificios(THREE) {
           }
         }
       }`);
+    if (PBR) sh.fragmentShader = sh.fragmentShader
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>
+        if (gF > 0.5) roughnessFactor = mix(texture2D(tFachPR, gTuv).r, texture2D(tFachBR, gTuv).r, gLad);`)
+      .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
+        if (gF > 0.5) { // relieve de la fachada: tangente = dirección del muro, bitangente = vertical
+          vec3 tn = mix(texture2D(tFachPN, gTuv).xyz, texture2D(tFachBN, gTuv).xyz, gLad) * 2.0 - 1.0;
+          vec3 Tg = normalize((viewMatrix * vec4(vWl.x, 0.0, vWl.y, 0.0)).xyz), Bg = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+          normal = normalize(Tg * tn.x + Bg * tn.y + normal * tn.z);
+        }`);
   };
-  mat.customProgramCacheKey = () => REALISTA ? 'edificiosFachadaTex' : 'edificiosVentanas';
+  mat.customProgramCacheKey = () => REALISTA ? (PBR ? 'edificiosFachadaPBR' : 'edificiosFachadaTex') : 'edificiosVentanas';
   T3.matEdif = mat;
   return mat;
 }
