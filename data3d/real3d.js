@@ -94,8 +94,11 @@ export function createFleet(T3, env) {
   const SC = 1.4, CAPN = 280, CAPF = 2800, YBASE = 0.64; // 0.64 = calzada a 0.62 + 2 cm
   let NEAR = 130; // hasta qué distancia se dibuja el carro detallado (en gafas se acorta)
   // gafas y celulares: pintura y vidrio estándar (sin capa de barniz), mucho más baratos de dibujar
-  const paint = T3.movil ? new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.45, roughness: 0.35, envMap: env, envMapIntensity: 1.1 }) : new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0.5, roughness: 0.30, clearcoat: 1, clearcoatRoughness: 0.05, envMap: env, envMapIntensity: 1.25 });
-  const glassM = T3.movil ? new THREE.MeshStandardMaterial({ color: 0x0b1117, metalness: 0.3, roughness: 0.1, envMap: env, envMapIntensity: 1.6 }) : new THREE.MeshPhysicalMaterial({ color: 0x0b1117, metalness: 0.3, roughness: 0.04, envMap: env, envMapIntensity: 1.8 });
+  // vista realista: pintura de carro real (base poco metálica + barniz) y vidrio polarizado oscuro; antes la pintura muy metálica y el vidrio
+  // con reflejos fuertes se veían de juguete (vidrio verde agua)
+  const RE = !!T3.realista;
+  const paint = T3.movil ? new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: RE ? 0.15 : 0.45, roughness: RE ? 0.4 : 0.35, envMap: env, envMapIntensity: RE ? 0.8 : 1.1 }) : new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: RE ? 0.12 : 0.5, roughness: RE ? 0.38 : 0.30, clearcoat: 1, clearcoatRoughness: RE ? 0.12 : 0.05, envMap: env, envMapIntensity: RE ? 0.85 : 1.25 });
+  const glassM = T3.movil ? new THREE.MeshStandardMaterial({ color: RE ? 0x07090b : 0x0b1117, metalness: RE ? 0 : 0.3, roughness: 0.1, envMap: env, envMapIntensity: RE ? 0.7 : 1.6 }) : new THREE.MeshPhysicalMaterial({ color: RE ? 0x06080a : 0x0b1117, metalness: RE ? 0 : 0.3, roughness: RE ? 0.08 : 0.04, envMap: env, envMapIntensity: RE ? 0.75 : 1.8 });
   const trimM = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.25, envMap: env, envMapIntensity: 0.6 });
   const lightM = new THREE.MeshBasicMaterial({ vertexColors: true });
   const est = NOMBRES.map(n => {
@@ -109,18 +112,32 @@ export function createFleet(T3, env) {
   const MAXC = 3200, X = new Float32Array(MAXC), Z = new Float32Array(MAXC), H = new Float32Array(MAXC), ID = new Int32Array(MAXC);
   const estiloDe = new Int8Array(8192).fill(-1), colorDe = new Int8Array(8192).fill(-1);
   const d = new THREE.Object3D(), col = new THREE.Color();
+  // sombra de contacto bajo cada carro (mancha oscura difusa): los asienta sobre el asfalto de la foto
+  let blob = null;
+  if (RE) {
+    const cv = document.createElement('canvas'); cv.width = 64; cv.height = 128; const g = cv.getContext('2d');
+    const gr = g.createRadialGradient(32, 64, 4, 32, 64, 62); gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.setTransform(1, 0, 0, 2, 0, -64); g.fillStyle = gr; g.fillRect(0, 0, 64, 128);
+    const geo = new THREE.PlaneGeometry(2.3, 5.0); geo.rotateX(-Math.PI / 2);
+    blob = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, opacity: 0.7, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -20 }), MAXC);
+    blob.count = 0; blob.frustumCulled = false; blob.renderOrder = -3; blob.instanceMatrix.setUsage(THREE.DynamicDrawUsage); T3.scene.add(blob);
+  }
   const fleet = { n: 0, estilos: est, setNear(v) { NEAR = v; }, begin() { this.n = 0; }, add(x, z, h, id) { if (this.n < MAXC) { X[this.n] = x; Z[this.n] = z; H[this.n] = h; ID[this.n] = id; this.n++; } } };
   fleet.end = function (cx, cz) {
     const cn = est.map(() => 0), cf = est.map(() => 0);
+    // realista: tamaño real (escala 1, un sedán mide 4,3 m) y ruedas apoyadas en el asfalto de la foto (antes 1,4x y flotando 35 cm)
+    const sc = RE ? 1.0 : SC, yb = RE ? (T3.sueloY != null ? T3.sueloY : 0.3) + 0.02 : YBASE;
     for (let i = 0; i < this.n; i++) {
       const id = ID[i] & 8191;
       if (estiloDe[id] < 0) { const r = hash(id * 7 + 3); let a = 0, s = 0; for (; s < PESOS.length - 1; s++) { a += PESOS[s]; if (r < a) break; } estiloDe[id] = s; colorDe[id] = Math.floor(hash(id * 13 + 5) * PINTURAS.length); }
       const s = estiloDe[id], o = est[s], dx = X[i] - cx, dz = Z[i] - cz, cercano = dx * dx + dz * dz < NEAR * NEAR && cn[s] < CAPN;
-      d.position.set(X[i], YBASE, Z[i]); d.rotation.set(0, H[i], 0); d.scale.setScalar(SC); d.updateMatrix();
+      d.position.set(X[i], yb, Z[i]); d.rotation.set(0, H[i], 0); d.scale.setScalar(sc); d.updateMatrix();
+      if (blob) blob.setMatrixAt(i, d.matrix);
       col.setHex(s === 3 ? 0xf2c200 : PINTURAS[colorDe[id]]);
       if (cercano) { const k = cn[s]++; for (const p of ['body', 'glass', 'trim', 'lights']) o.near[p].setMatrixAt(k, d.matrix); o.near.body.setColorAt(k, col); }
       else if (cf[s] < CAPF) { const k = cf[s]++; o.far.body.setMatrixAt(k, d.matrix); o.far.glass.setMatrixAt(k, d.matrix); o.far.body.setColorAt(k, col); }
     }
+    if (blob) { blob.count = this.n; blob.instanceMatrix.needsUpdate = true; }
     est.forEach((o, s) => {
       for (const p of ['body', 'glass', 'trim', 'lights']) { o.near[p].count = cn[s]; o.near[p].instanceMatrix.needsUpdate = true; }
       o.near.body.instanceColor.needsUpdate = true;
