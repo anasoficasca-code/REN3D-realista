@@ -207,7 +207,6 @@
 <div class="hud" id="hud-c">
   <button id="b-sat" hidden style="display:none">🛰️ Satélite</button>
   <button id="b-todo" class="on"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg>Maqueta 3D</button>
-  <button id="b-giro" onclick="location.href='giro.html'" title="Vista fotorrealista 360° (render de Unreal)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>360</button>
   <button id="b-splat" hidden style="display:none">🌀 Splat Humedal</button>
   <button id="b-hd" hidden style="display:none">📦 HD</button>
   <button id="b-tour" hidden style="display:none">▶ Tour Kennedy</button>
@@ -840,10 +839,11 @@ const GOOGLE = REALISTA && new URLSearchParams(location.search).get('vista') ===
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
-  fondo: 0xa9cbe6, niebla: REALISTA ? 0xb4cbe2 : 0xcfdde8, densNiebla: REALISTA ? 0.00007 : 0.000055, // realista: bruma azulada de perspectiva aérea, como en los renders de Umbra // bruma ligera: los cerros a 10-20 km se ven con perspectiva atmosférica // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
-  top: 0x2a6fc4, mid: 0x74afe3, bot: 0xdbe6ea, nubes: 0.5,
-  hemiCielo: 0xb4d3ff, hemiSuelo: 0x7a6f4a, hemi: 0.86, // luz de cielo azulada arriba y rebote cálido del suelo
-  solColor: 0xffe6bf, sol: 3.0, exposicion: 1.0 // sol cálido y fuerte: más contraste entre luz y sombra
+  fondo: 0xa9cbe6, niebla: REALISTA ? 0xa3b8cc : 0xcfdde8, densNiebla: REALISTA ? 0.000042 : 0.000055, // realista: bruma azul grisácea suave: los cerros a 10-15 km se ven verdes y azulados (antes la bruma los volvía una franja blanca) // bruma ligera: los cerros a 10-20 km se ven con perspectiva atmosférica // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
+  top: 0x2a6fc4, mid: 0x74afe3, bot: REALISTA ? 0xb9cbdb : 0xdbe6ea, nubes: 0.5,
+  // realista: más luz de cielo y sol menos duro: las caras en sombra quedan azuladas y legibles, no negras (como una foto de dron a media mañana)
+  hemiCielo: 0xb4d3ff, hemiSuelo: 0x7a6f4a, hemi: REALISTA ? 1.15 : 0.86, // luz de cielo azulada arriba y rebote cálido del suelo
+  solColor: 0xffe6bf, sol: REALISTA ? 2.5 : 3.0, exposicion: 1.0 // sol cálido y fuerte: más contraste entre luz y sombra
 };
 const LC = { x: 5341.33, y: 3161.9 };
 const lw = (x, y) => [x - LC.x, LC.y - y]; // z invertido: el territorio estaba en espejo (norte/sur al revés)
@@ -1093,10 +1093,11 @@ function actualizarMallaIn(T, tl, dt) {
   if (tl.errorTarget > T.errMeta && tl.stats.downloading === 0 && tl.stats.parsing === 0 && tl.stats.visible > 3) tl.errorTarget = Math.max(T.errMeta, Math.round(tl.errorTarget * 0.62));
   if (T.debug) {
     const s = tl.stats; let mallas = 0; tl.group.traverse(x => { if (x.isMesh) mallas++; });
-    T.debug.textContent = 'malla: ' + s.visible + ' visibles · ' + mallas + ' mallas · ' + s.downloading + ' descargando · ' + s.parsing + ' procesando · ' + T.tilesErr + ' errores · error objetivo ' + tl.errorTarget + ' px · dy=' + T.tilesDy.toFixed(1) + ' m · cámara y=' + Math.round(T.camera.position.y) + ' m';
+    T.dbgN = (T.dbgN || 0) + 1; T.dbgT = (T.dbgT || 0) + dt; if (T.dbgT > 1) { T.dbgFps = T.dbgN / T.dbgT; T.dbgN = 0; T.dbgT = 0; console.log('[debug] fps ' + T.dbgFps.toFixed(1) + ' · triángulos ' + (T.renderer.info.render.triangles / 1e6).toFixed(2) + ' M · teselas ' + s.visible + ' · descargando ' + s.downloading); }
+    T.debug.textContent = (T.dbgFps ? T.dbgFps.toFixed(0) + ' fps · ' + (T.renderer.info.render.triangles / 1e6).toFixed(1) + ' M triángulos · ' : '') + 'malla: ' + s.visible + ' visibles · ' + mallas + ' mallas · ' + s.downloading + ' descargando · ' + s.parsing + ' procesando · ' + T.tilesErr + ' errores · error objetivo ' + tl.errorTarget + ' px · dy=' + T.tilesDy.toFixed(1) + ' m · cámara y=' + Math.round(T.camera.position.y) + ' m';
   }
   const o = T.orbit.target;
-  if (T.sombra) T.sombra.position.set(Math.round(o.x / 40) * 40, -0.2, Math.round(o.z / 40) * 40);
+  if (T.sombra) T.sombra.position.set(Math.round(o.x / 40) * 40, T.sombra.userData.y || -0.2, Math.round(o.z / 40) * 40);
   T.tilesT += dt;
   if (T.tilesCalib < 3 && T.tilesT > [1.5, 6, 16][T.tilesCalib]) { if (calibrarMalla(T)) T.tilesCalib++; else T.tilesT = 0; }
   else if (REALISTA && T.calibXZ && T.tilesT > 4 && Math.hypot(o.x - T.calibXZ[0], o.z - T.calibXZ[1]) > 700) { T.tilesT = 0; calibrarMalla(T); } // al ir a otra zona se vuelve a medir el suelo
@@ -1190,6 +1191,11 @@ async function initTodoReal() {
     { // suelo base neutro desde el primer cuadro (debajo de todo; la foto de Google lo cubre cuando llega)
       const gb = new THREE.Mesh(new THREE.PlaneGeometry(16000, 12000), new THREE.MeshBasicMaterial({ color: 0x77746a }));
       gb.rotation.x = -Math.PI / 2; gb.position.y = -2.9; gb.renderOrder = -20; T3.sueloBase = gb; scene.add(gb);
+    }
+    if (REALISTA && !LIVIANO) { // SOMBRAS EN EL SUELO: la foto de Google no recibe sombras; una lámina invisible a ras del suelo (Kennedy es plano)
+      // recoge la sombra de edificios, árboles y carros y la oscurece en tono de cielo. Sigue a la cámara (el sol y su sombra también).
+      const sm = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), new THREE.ShadowMaterial({ color: 0x1c2738, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -16 }));
+      sm.rotation.x = -Math.PI / 2; sm.receiveShadow = true; sm.renderOrder = -4; sm.userData.y = 0.45; sm.position.y = 0.45; T3.sombra = sm; scene.add(sm);
     }
     if (suelo) suelo.cargar().catch(e => console.warn('texturas del suelo:', e));
     // ARRANQUE RÁPIDO: todo se pide a la vez (antes era uno tras otro) y la foto de Google baja en segundo plano sin bloquear la pantalla de carga
@@ -1315,33 +1321,34 @@ async function initTodoReal() {
 const PAL_ALTO = [[0.64, 0.34, 0.23], [0.58, 0.31, 0.21], [0.70, 0.42, 0.30], [0.66, 0.37, 0.26], [0.86, 0.82, 0.74], [0.60, 0.33, 0.24], [0.76, 0.74, 0.70]];
 const PAL_BAJO = [[0.64, 0.35, 0.24], [0.90, 0.88, 0.82], [0.88, 0.80, 0.66], [0.86, 0.62, 0.52], [0.66, 0.78, 0.74], [0.70, 0.40, 0.28], [0.92, 0.90, 0.86], [0.80, 0.74, 0.58]];
 const lin = (c) => c.map(x => Math.pow(x, 2.2));
-// ÁRBOLES TIPO MAQUETA DE UMBRA (vista realista): copas redondas y frondosas de varios lóbulos, verde vivo, más claras arriba y
-// oscuras abajo (oclusión), con tronco. Desde el dron se leen como en los renders de Umbra (los modelos de hojas reales se veían ralos y oscuros).
-// Todos los árboles de los datos (~120 mil): cerca de la cámara la copa detallada, lejos una copa simple.
+// ÁRBOLES (vista realista): copas de muchos lóbulos pequeños y desiguales, en cuatro formas (redonda, ancha, alta tipo eucalipto,
+// irregular), verdes oliva naturales, borde deshilachado de follaje (recorte por ruido donde la copa se ve de canto) y luz de cielo
+// en las hojas. Todos los árboles de los datos (~120 mil): cerca de la cámara la copa detallada, lejos una copa simple.
 function buildCopas(THREE, T) {
   const N = T.t.length, X = new Float32Array(N), Z = new Float32Array(N), Hh = new Float32Array(N), hs = (i) => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
-  for (let i = 0; i < N; i++) { const t = T.t[i], w = lw(t[0], t[1]); X[i] = w[0]; Z[i] = w[1]; Hh[i] = Math.max(6, Math.min(14, 6.5 + (t[2] || 4) * 0.8 + hs(i) * 3)); }
-  const copa = (det, lob) => { // árbol de 1 m de alto: copa de lóbulos (normales de esfera = sombreado suave) + tronco
-    const gs = [], c0 = [0, 0.62, 0];
+  for (let i = 0; i < N; i++) { const t = T.t[i], w = lw(t[0], t[1]); X[i] = w[0]; Z[i] = w[1]; Hh[i] = Math.max(5, Math.min(15, 5.5 + (t[2] || 4) * 0.8 + hs(i) * 4)); }
+  // forma: [lóbulos, radio de reparto, alto del centro, achatamiento, tamaño de lóbulo]
+  const FORMAS = [[7, 0.2, 0.64, 0.9, 0.2], [8, 0.27, 0.58, 0.72, 0.19], [6, 0.12, 0.7, 1.35, 0.16], [7, 0.22, 0.6, 0.85, 0.2]];
+  const copa = (det, f, semilla) => { // árbol de 1 m de alto (normales de esfera = sombreado suave)
+    const [lob, rr, cy0, ach, s0] = FORMAS[f], gs = [];
     for (let k = 0; k < lob; k++) {
-      const a = k / lob * Math.PI * 2 + 0.4, r = k ? 0.17 : 0, s = k ? 0.24 + hs(k * 7 + det) * 0.06 : 0.3;
-      const cx = c0[0] + Math.cos(a) * r, cy = c0[1] + (k ? (hs(k * 3) - 0.35) * 0.16 : 0.06), cz = c0[2] + Math.sin(a) * r;
+      const a = hs(semilla + k * 3.1) * Math.PI * 2, r = k ? rr * (0.35 + 0.65 * hs(semilla + k * 5.7)) : 0, s = s0 * (0.75 + 0.5 * hs(semilla + k * 7.3)) * (k ? 1 : 1.35);
+      const cx = Math.cos(a) * r, cy = cy0 + (hs(semilla + k * 2.3) - 0.45) * 0.3 * ach, cz = Math.sin(a) * r;
       const g = new THREE.IcosahedronGeometry(1, det).toNonIndexed(), p = g.attributes.position, nr = g.attributes.normal, col = new Float32Array(p.count * 3);
       for (let i = 0; i < p.count; i++) {
-        const nx = p.getX(i), ny = p.getY(i), nz = p.getZ(i), bump = 1 + (Math.sin(nx * 9.1 + ny * 7.3) * Math.cos(nz * 8.7 - ny * 5.1)) * 0.09;
-        p.setXYZ(i, cx + nx * s * bump, cy + ny * s * 0.92 * bump, cz + nz * s * bump); nr.setXYZ(i, nx, ny, nz);
-        const v = 0.55 + 0.45 * Math.max(0, Math.min(1, (ny + 1) / 2)) * (k ? 1 : 1.06); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v;
+        const nx = p.getX(i), ny = p.getY(i), nz = p.getZ(i), bump = 1 + (Math.sin(nx * 9.1 + ny * 7.3 + k) * Math.cos(nz * 8.7 - ny * 5.1)) * 0.12;
+        p.setXYZ(i, cx + nx * s * bump, cy + ny * s * ach * bump, cz + nz * s * bump); nr.setXYZ(i, nx, ny, nz);
+        const v = 0.45 + 0.55 * Math.max(0, Math.min(1, (cy + ny * s * ach - 0.35) / 0.55)); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v; // oscuro abajo y adentro
       }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3)); gs.push(g);
     }
-    if (det === 0) return mergeGeoms(THREE, gs); // lejos: sin tronco (no se ve)
-    const tr = new THREE.CylinderGeometry(0.035, 0.055, 0.42, 5).toNonIndexed(); tr.translate(0, 0.21, 0);
-    { const n = tr.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) { c[i * 3] = 0.42; c[i * 3 + 1] = 0.3; c[i * 3 + 2] = 0.22; } tr.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
+    if (det === 0) return mergeGeoms(THREE, gs);
+    const tr = new THREE.CylinderGeometry(0.025, 0.045, cy0, 5).toNonIndexed(); tr.translate(0, cy0 / 2, 0);
+    { const n = tr.attributes.position.count, c = new Float32Array(n * 3); for (let i = 0; i < n; i++) { c[i * 3] = 0.3; c[i * 3 + 1] = 0.24; c[i * 3 + 2] = 0.19; } tr.setAttribute('color', new THREE.BufferAttribute(c, 3)); }
     gs.push(tr); return mergeGeoms(THREE, gs);
   };
   const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
-  // follaje: manchas de hojas claras y huecos oscuros (ruido 3D en coordenadas del mundo, ~0,35 m) y relieve irregular de la copa;
-  // así de cerca no se ven las facetas de la esfera sino un follaje denso
+  // follaje: manchas de hojas y huecos (ruido 3D en el mundo), relieve, borde deshilachado y luz de cielo que atraviesa las hojas del borde
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWPh;')
       .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWPh = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;');
@@ -1352,35 +1359,43 @@ function buildCopas(THREE, T) {
         return mix(mix(mix(hh(i), hh(i + vec3(1,0,0)), f.x), mix(hh(i + vec3(0,1,0)), hh(i + vec3(1,1,0)), f.x), f.y),
                    mix(mix(hh(i + vec3(0,0,1)), hh(i + vec3(1,0,1)), f.x), mix(hh(i + vec3(0,1,1)), hh(i + vec3(1,1,1)), f.x), f.y), f.z); }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-        { vec3 p = vWPh * 2.6; float e = 0.35;
+        float canto = 1.0 - abs(dot(normal, normalize(vViewPosition)));
+        if (canto > 0.62 && vn(vWPh * 3.4) > 0.62 - (canto - 0.62) * 0.8) discard;   // borde de follaje deshilachado
+        { vec3 p = vWPh * 3.0; float e = 0.3;
           vec3 g = vec3(vn(p + vec3(e,0,0)) - vn(p - vec3(e,0,0)), vn(p + vec3(0,e,0)) - vn(p - vec3(0,e,0)), vn(p + vec3(0,0,e)) - vn(p - vec3(0,0,e)));
-          normal = normalize(normal - (viewMatrix * vec4(g, 0.0)).xyz * 0.9); }`)
+          normal = normalize(normal - (viewMatrix * vec4(g, 0.0)).xyz * 1.1); }`)
       .replace('#include <color_fragment>', `#include <color_fragment>
-        { float a = vn(vWPh * 2.6), b = vn(vWPh * 0.9 + 7.0);
-          diffuseColor.rgb *= 0.62 + 0.62 * smoothstep(0.25, 0.85, a) * (0.75 + 0.5 * b);   // hojas iluminadas y huecos oscuros
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.18, 1.1, 0.7), smoothstep(0.7, 0.95, a) * 0.5); } // brillos amarillentos`);
+        { float a = vn(vWPh * 3.0), b = vn(vWPh * 0.7 + 7.0);
+          diffuseColor.rgb *= 0.55 + 0.7 * smoothstep(0.3, 0.85, a) * (0.8 + 0.4 * b);   // hojas al sol y huecos en sombra
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.08, 0.78), smoothstep(0.75, 0.95, a) * 0.4); }`)
+      .replace('#include <opaque_fragment>', `outgoingLight += diffuseColor.rgb * vec3(0.10, 0.13, 0.08) * (1.0 - abs(dot(normal, normalize(vViewPosition)))); // luz que atraviesa el borde
+        #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'copasFollaje';
-  const NEAR = T3.movil ? 2500 : 6000, R = T3.movil ? 450 : 700, RMAX = T3.movil ? 2500 : 4000; // más allá de RMAX la bruma los tapa
-  const cerca = new THREE.InstancedMesh(copa(1, 4), mat, NEAR), lejos = new THREE.InstancedMesh(copa(0, 1), mat, N);
-  for (const m of [cerca, lejos]) { m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3); m.receiveShadow = false; T3.scene.add(m); }
-  cerca.castShadow = !T3.liviano; lejos.castShadow = false;
-  const VERDES = [[0.36, 0.56, 0.20], [0.30, 0.50, 0.18], [0.44, 0.62, 0.24], [0.26, 0.44, 0.17], [0.40, 0.58, 0.28], [0.50, 0.62, 0.26]].map(c => c.map(x => Math.pow(x, 2.2)));
+  mat.customProgramCacheKey = () => 'copasFollaje2';
+  const NEAR = T3.movil ? 400 : 900, R = T3.movil ? 400 : 600, RMAX = T3.movil ? 2500 : 4000; // más allá de RMAX la bruma los tapa
+  // lejos: UNA copa simple de 20 triángulos (con los lóbulos eran ~25 millones de triángulos y la página casi no avanzaba)
+  const copaLejos = (() => { const g = new THREE.IcosahedronGeometry(1, 0).toNonIndexed(), p = g.attributes.position, c = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const y = p.getY(i); p.setXYZ(i, p.getX(i) * 0.3, 0.62 + y * 0.27, p.getZ(i) * 0.3); const v = 0.5 + 0.5 * (y + 1) / 2; c[i * 3] = v; c[i * 3 + 1] = v; c[i * 3 + 2] = v; }
+    g.setAttribute('color', new THREE.BufferAttribute(c, 3)); return g; })();
+  const cerca = FORMAS.map((_, f) => new THREE.InstancedMesh(copa(1, f, f * 17 + 3), mat, NEAR)), lejos = new THREE.InstancedMesh(copaLejos, mat, N);
+  for (const m of [...cerca, lejos]) { m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(m.instanceMatrix.count * 3), 3); m.receiveShadow = false; T3.scene.add(m); }
+  cerca.forEach(m => m.castShadow = !T3.liviano); lejos.castShadow = false;
+  const VERDES = [[0.29, 0.37, 0.18], [0.23, 0.32, 0.15], [0.35, 0.41, 0.2], [0.26, 0.34, 0.2], [0.38, 0.43, 0.23], [0.2, 0.28, 0.16], [0.33, 0.38, 0.17]].map(c => c.map(x => Math.pow(x, 2.2)));
   const d = new THREE.Object3D(), col = new THREE.Color(), ult = { x: 1e9, z: 1e9 };
   const api = { N, pos: { X, Z, Hh } };
   api.update = (cam) => {
     const cx = cam.position.x, cz = cam.position.z;
     if ((cx - ult.x) ** 2 + (cz - ult.z) ** 2 < 150 * 150) return;
-    ult.x = cx; ult.z = cz; let nc = 0, nl = 0;
+    ult.x = cx; ult.z = cz; const nc = cerca.map(() => 0); let nl = 0;
     for (let i = 0; i < N; i++) {
       const d2 = (X[i] - cx) ** 2 + (Z[i] - cz) ** 2; if (d2 > RMAX * RMAX) continue;
-      const h = Hh[i], w = h * (0.95 + hs(i * 5) * 0.3), near = d2 < R * R && nc < NEAR;
+      const f = Math.floor(hs(i * 19) * FORMAS.length), h = Hh[i] * (f === 2 ? 1.25 : 1), w = h * (f === 2 ? 0.55 : f === 1 ? 1.15 : 0.95) * (0.85 + hs(i * 5) * 0.3), near = d2 < R * R && nc[f] < NEAR;
       d.position.set(X[i], 0, Z[i]); d.rotation.set(0, hs(i * 11) * 6.28, 0); d.scale.set(w, h, w); d.updateMatrix();
-      const g = VERDES[Math.floor(hs(i * 13) * VERDES.length)], k = 0.9 + hs(i * 17) * 0.2; col.setRGB(g[0] * k, g[1] * k, g[2] * k);
-      if (near) { cerca.setMatrixAt(nc, d.matrix); cerca.setColorAt(nc++, col); } else { lejos.setMatrixAt(nl, d.matrix); lejos.setColorAt(nl++, col); }
+      const g = VERDES[Math.floor(hs(i * 13) * VERDES.length)], k = 0.85 + hs(i * 17) * 0.3; col.setRGB(g[0] * k, g[1] * k, g[2] * k);
+      if (near) { cerca[f].setMatrixAt(nc[f], d.matrix); cerca[f].setColorAt(nc[f]++, col); } else { lejos.setMatrixAt(nl, d.matrix); lejos.setColorAt(nl++, col); }
     }
-    cerca.count = nc; lejos.count = nl;
-    for (const m of [cerca, lejos]) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
+    cerca.forEach((m, f) => m.count = nc[f]); lejos.count = nl;
+    for (const m of [...cerca, lejos]) { m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
   };
   api.update(T3.camera);
   return api;
