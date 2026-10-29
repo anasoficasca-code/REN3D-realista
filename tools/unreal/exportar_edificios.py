@@ -11,13 +11,15 @@ from PIL import Image, ImageDraw
 RAIZ = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
 OUT = sys.argv[1] if len(sys.argv) > 1 else r'C:\Users\ACER\Documents\Unreal Projects\Kennedy360\Importar'
 os.makedirs(OUT, exist_ok=True)
-RADIO = 1500.0
+RADIO = 900.0         # zona del proyecto (igual que la web): afuera queda la malla de Google tal cual
 SUELO = 15.8          # m sobre la altura elipsoidal del origen (2548): el asfalto de la malla de Google está ~16 m más arriba
 # datos (x, y) del modelo -> este/norte del origen de Unreal (GEO de index.html: EX -5193.24, EY -2090.06, LNG0 -74.17, LAT0 4.63)
 MXg, MYg = 111320 * math.cos(math.radians(4.63)), 110540.0
 DX = -5193.24 - (-74.149778 + 74.17) * MXg
 DY = -2090.06 - (4.640683 - 4.63) * MYg
 def en(x, y): return x + DX, y + DY
+ZC = en(7437, 3271)   # centro de la zona del proyecto (ZONA de index.html)
+def enZona(x, y, m=0): return (x - ZC[0]) ** 2 + (y - ZC[1]) ** 2 < (RADIO + m) ** 2
 
 def hsh(i):
     s = math.sin(i * 127.1 + 311.7) * 43758.5453
@@ -56,21 +58,67 @@ def triangular(poly):  # recorte de orejas (CCW, sin repetir el último punto)
     if len(idx) == 3: tris.append(tuple(idx))
     return tris
 
-V, VT, F = [], [], {'ladrillo': [], 'pintado': [], 'techo': []}
+# materiales: fachadas (ladrillo y pañete salmón, crema o blanco, como en los videos de dron del humedal), techo plano,
+# lámina de los techos a dos aguas y concreto de los balcones
+MATS = ('ladrillo', 'salmon', 'crema', 'blanco', 'techo', 'lamina', 'balcon')
+V, VT, F = [], [], {m: [] for m in MATS}
 def v(x, y, z):  # este, norte, alto. El importador de UE 5.8 toma el OBJ como (x, -y, z) en cm: así queda (este, sur, alto) sin girar
     V.append((x, y, z)); return len(V)
 def vt(u, w):
     VT.append((u, w)); return len(VT)
+def quad(mat, a, b, c, d, uv=((0, 0), (1, 0), (1, 1), (0, 1))):
+    ia, ib, ic, id_ = (v(*p) for p in (a, b, c, d)); ta, tb, tc, td = (vt(*t) for t in uv)
+    F[mat].append(((ia, ta), (ib, tb), (ic, tc))); F[mat].append(((ia, ta), (ic, tc), (id_, td)))
+def caja(mat, c, ex, ey, ez):  # caja centrada en c con semiejes ex, ey (horizontales) y ez (vertical): vectores (x, y, z)
+    P = [tuple(c[k] + sx * ex[k] + sy * ey[k] + sz * ez[k] for k in range(3)) for sz in (-1, 1) for sy in (-1, 1) for sx in (-1, 1)]
+    for f in ((0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)): quad(mat, *(P[i] for i in f))
+def dos_aguas(q, h, bi, mat_muro):  # techo a dos aguas en bloques casi rectangulares y alargados de 2 a 7 pisos (igual que la web)
+    poly = q[:-1]; n = len(poly)
+    if h < 5 or h > 22 or n < 4: return False
+    L, ux, uy = 0, 1, 0
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]; l = math.hypot(b[0] - a[0], b[1] - a[1])
+        if l > L: L, ux, uy = l, (b[0] - a[0]) / l, (b[1] - a[1]) / l
+    vx, vy = -uy, ux
+    us = [p[0] * ux + p[1] * uy for p in poly]; vs = [p[0] * vx + p[1] * vy for p in poly]
+    Lu, Lv = max(us) - min(us), max(vs) - min(vs)
+    if abs(area2(q)) / (Lu * Lv) < 0.86 or Lu / Lv < 1.3 or Lv < 6 or Lv > 22: return False
+    o, hr = 0.3, max(1.2, min(3.2, Lv * 0.18)); u0, u1, v0, v1 = min(us), max(us), min(vs), max(vs); vm = (v0 + v1) / 2
+    pt = lambda u, w, z: (u * ux + w * vx, u * uy + w * vy, z)
+    z1, zr, ze = SUELO + h, SUELO + h + hr, SUELO + h - 0.15
+    quad('lamina', pt(u0 - o, v0 - o, ze), pt(u1 + o, v0 - o, ze), pt(u1 + o, vm, zr), pt(u0 - o, vm, zr))
+    quad('lamina', pt(u0 - o, v1 + o, ze), pt(u0 - o, vm, zr), pt(u1 + o, vm, zr), pt(u1 + o, v1 + o, ze))
+    for u in (u0, u1):  # piñones
+        a, b, c = pt(u, v0, z1), pt(u, v1, z1), pt(u, vm, zr - 0.2)
+        ia, ib, ic = v(*a), v(*b), v(*c); ta, tb, tc = vt(0, h / 12), vt(Lv / 12.4, h / 12), vt(Lv / 24.8, (h + hr) / 12)
+        F[mat_muro].append(((ia, ta), (ib, tb), (ic, tc)))
+    return True
+def balcones(q, h, bi):  # torres: losa y antepecho de concreto en módulos alternos de cada fachada larga, piso por piso
+    if h < 15: return
+    pisos = int(h // 3)
+    for i in range(len(q) - 1):
+        a, c = q[i], q[i + 1]; L = math.hypot(c[0] - a[0], c[1] - a[1])
+        if L < 8: continue
+        dx, dy = (c[0] - a[0]) / L, (c[1] - a[1]) / L; nx, ny = dy, -dx  # normal hacia afuera (anillo antihorario)
+        mods = int(L // 3.1); cw = L / mods
+        for m in range(mods):
+            if (m + bi) % 2: continue
+            s = (m + 0.5) * cw
+            for fl in range(1, pisos - 1):
+                z = SUELO + fl * 3.0; cx, cy = a[0] + dx * s + nx * 0.6, a[1] + dy * s + ny * 0.6
+                caja('balcon', (cx, cy, z), (dx * 1.25, dy * 1.25, 0), (nx * 0.6, ny * 0.6, 0), (0, 0, 0.08))           # losa
+                caja('balcon', (cx + nx * 0.55, cy + ny * 0.55, z + 0.55), (dx * 1.25, dy * 1.25, 0), (nx * 0.05, ny * 0.05, 0), (0, 0, 0.47))  # antepecho
 n = 0
 for bi, b in enumerate(B):
     pts, h = b['pts'], float(b.get('h') or 0)
     if h < 2.5 or len(pts) < 4: continue
     q = [en(p[0], p[1]) for p in pts]
     cx = sum(p[0] for p in q) / len(q); cy = sum(p[1] for p in q) / len(q)
-    if cx * cx + cy * cy > RADIO * RADIO: continue
+    if not enZona(cx, cy): continue
     if area2(q) < 0: q = q[::-1]
     r = hsh(bi * 3.7)
-    mat = ('ladrillo' if r < 0.82 else 'pintado') if h > 7 else ('ladrillo' if r < 0.4 else 'pintado')
+    if h > 7: mat = 'ladrillo' if r < 0.55 else 'salmon' if r < 0.8 else 'crema'
+    else: mat = 'ladrillo' if r < 0.4 else 'blanco' if r < 0.65 else 'crema' if r < 0.85 else 'salmon'
     z0, z1 = SUELO - 0.8, SUELO + h
     acum = 0.0
     for i in range(len(q) - 1):
@@ -87,6 +135,7 @@ for bi, b in enumerate(B):
     ids = [v(p[0], p[1], z1) for p in poly]; tids = [vt(p[0] / 8.0, p[1] / 8.0) for p in poly]
     for (x, y, z) in triangular(poly):
         F['techo'].append(((ids[x], tids[x]), (ids[y], tids[y]), (ids[z], tids[z])))
+    dos_aguas(q, h, bi, mat); balcones(q, h, bi)
     n += 1
 with open(os.path.join(OUT, 'edificios.obj'), 'w') as f:
     f.write('# REN3D - edificios alrededor del humedal El Burro\n')
@@ -102,9 +151,9 @@ T = json.load(open(os.path.join(RAIZ, 'data3d', 'trees.json'), encoding='utf-8')
 arb = []
 for i, t in enumerate(T):
     x, y = en(t[0], t[1])
-    if x * x + y * y > RADIO * RADIO: continue
+    if not enZona(x, y, 100): continue
     h = max(6.0, min(14.0, 6.5 + (t[2] or 4) * 0.8 + hsh(i) * 3))
-    arb.append([round(x, 2), round(y, 2), round(h, 2), round(hsh(i * 11) * 360, 1), round(0.95 + hsh(i * 5) * 0.3, 3), int(hsh(i * 13) * 6)])
+    arb.append([round(x, 2), round(y, 2), round(h, 2), round(hsh(i * 11) * 360, 1), round(0.95 + hsh(i * 5) * 0.3, 3), 0 if hsh(i * 13) < 0.65 else 1])  # especie: 0 jacaranda, 1 island tree (Poly Haven)
 json.dump({'suelo': SUELO, 'arboles': arb}, open(os.path.join(OUT, 'arboles.json'), 'w'))
 print('arboles: %d' % len(arb))
 # copa de lóbulos (icosaedro subdividido) + tronco, 1 m de alto, normales de esfera
@@ -186,3 +235,10 @@ for tipo in ('ladrillo', 'pintado'):
             rect(x + w / 2 - fr / 2, y, fr, h, (244, 242, 238), 115); rect(x, y + h * 0.38, w, fr * 0.8, (244, 242, 238), 115)
     C.save(os.path.join(OUT, 'fachada_%s_color.png' % tipo)); N.save(os.path.join(OUT, 'fachada_%s_normal.png' % tipo)); R.save(os.path.join(OUT, 'fachada_%s_rugosidad.png' % tipo))
 print('texturas listas en', OUT)
+
+# ---------- árboles reales (Poly Haven, CC0): versiones sin compresión meshopt (Unreal no la lee) de la carpeta REN3D ----------
+import shutil
+MOD = r'C:\Users\ACER\REN3D\data3d\models'
+for nombre in ('jacaranda_L0_hojas', 'jacaranda_L0_madera', 'island_tree_01_L0_hojas', 'island_tree_01_L0_madera'):
+    shutil.copy(os.path.join(MOD, nombre + '.glb'), os.path.join(OUT, nombre + '.glb'))
+print('arboles reales copiados')

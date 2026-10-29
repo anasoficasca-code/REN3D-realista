@@ -84,7 +84,7 @@ pp('auto_exposure_max_brightness', 14.5)
 pp('auto_exposure_bias', 0.55)  # imagen luminosa, como los renders de Umbra
 pp('bloom_intensity', 0.3)
 pp('vignette_intensity', 0.18)
-pp('color_saturation', unreal.Vector4(1.22, 1.22, 1.22, 1.0))
+pp('color_saturation', unreal.Vector4(1.1, 1.1, 1.1, 1.0))  # natural, como Umbra (1,22 se veía chillón)
 pp('color_contrast', unreal.Vector4(1.08, 1.08, 1.08, 1.0))
 pp('color_gamma_shadows', unreal.Vector4(1.0, 1.0, 1.0, 1.18))  # sombras abiertas, no negras
 pp('color_saturation_highlights', unreal.Vector4(1.0, 1.0, 1.0, 0.95))
