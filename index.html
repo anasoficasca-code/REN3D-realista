@@ -1304,22 +1304,72 @@ async function agregarEdificiosMedio() {
   if (!T3 || T3.edifOK) return;
   try { const B = await fetchProg('data3d/buildings_humedal.json', 'Edificios'); buildChunks(T3.THREE, B); } catch (e) { console.warn('edificios del humedal:', e); }
 }
+// FACHADAS DE TEXTURA (vista realista, como las torres de las maquetas de Umbra): ladrillo a la vista con ventanas de marco blanco
+// y franja de placa en cada piso, y muro pintado con las mismas ventanas. Son texturas con mipmaps: la retícula de ventanas se sigue
+// viendo desde el dron (el patrón calculado en el shader se fundía en un color plano a la distancia).
+// Cada textura cubre 4 módulos de ventana (3,1 m) x 4 pisos (3 m).
+function texturasFachada(THREE, renderer) {
+  const S = MOVIL ? 512 : 1024, M = S / 4, pm = M / 3.05; // píxeles por módulo y por metro
+  const rnd = mulberry32(7);
+  const pintar = (ladrillo) => {
+    const cv = document.createElement('canvas'); cv.width = cv.height = S; const g = cv.getContext('2d');
+    if (ladrillo) { // hiladas de ladrillo trabado con juntas claras
+      g.fillStyle = '#c9b8a6'; g.fillRect(0, 0, S, S);
+      const hb = Math.max(2, 0.075 * pm), lb = 0.25 * pm;
+      for (let y = 0, f = 0; y < S; y += hb, f++) for (let x = -(f % 2) * lb / 2; x < S; x += lb) {
+        const k = 0.86 + rnd() * 0.22; g.fillStyle = `rgb(${Math.round(166 * k)},${Math.round(88 * k)},${Math.round(60 * k)})`;
+        g.fillRect(x + 0.6, y + 0.6, lb - 1.2, hb - 1.2);
+      }
+    } else { g.fillStyle = '#f1eee8'; g.fillRect(0, 0, S, S); for (let i = 0; i < S * 6; i++) { g.fillStyle = `rgba(0,0,0,${rnd() * 0.035})`; g.fillRect(rnd() * S, rnd() * S, 2, 2); } }
+    for (let fy = 0; fy < 4; fy++) {
+      const y0 = fy * M, piso = y0 + M; // piso = borde inferior de la celda (v crece hacia arriba)
+      g.fillStyle = ladrillo ? '#e9e5dd' : '#d9d4ca'; g.fillRect(0, piso - 0.22 * pm, S, 0.22 * pm); // franja de placa
+      for (let cx = 0; cx < 4; cx++) {
+        const w = 1.35 * pm, h = 1.4 * pm, x = cx * M + (M - w) / 2, yb = piso - 0.22 * pm - 0.9 * pm, y = yb - h, fr = Math.max(2, 0.07 * pm);
+        g.fillStyle = '#f4f2ee'; g.fillRect(x - fr, y - fr, w + 2 * fr, h + 2 * fr); // marco
+        g.fillStyle = '#e7e2d8'; g.fillRect(x - fr * 2, yb + fr, w + fr * 4, fr * 1.3); // alféizar
+        const cort = rnd(), gr = g.createLinearGradient(0, y, 0, yb); // vidrio: reflejo del cielo arriba, interior oscuro abajo (algunos con cortina)
+        gr.addColorStop(0, cort > 0.75 ? '#b9ad98' : '#8fa7bc'); gr.addColorStop(0.55, cort > 0.75 ? '#8a7e6c' : '#3d4b58'); gr.addColorStop(1, '#232a31');
+        g.fillStyle = gr; g.fillRect(x, y, w, h);
+        g.fillStyle = '#f4f2ee'; g.fillRect(x + w / 2 - fr / 2, y, fr, h); g.fillRect(x, y + h * 0.38, w, fr * 0.8); // parteluz y travesaño
+      }
+    }
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; return t;
+  };
+  return { ladrillo: pintar(true), pintado: pintar(false) };
+}
 // material de los edificios (uno solo para todos): fachada con ventanas alineadas a cada muro, centradas y sin cortes en las esquinas
 function materialEdificios(THREE) {
   if (T3.matEdif) return T3.matEdif;
   const mat = LIVIANO ? new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true }) // celular/gafas: material barato
     : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true, roughness: 0.86, metalness: 0, envMap: T3.env || null, envMapIntensity: 0.55 });
   T3.roofU = { uOrto: { value: null }, uOrtoVP: { value: new THREE.Matrix4() }, uOrtoOn: { value: 0 } };
+  if (REALISTA) { const tx = texturasFachada(THREE, T3.renderer); T3.roofU.tFachB = { value: tx.ladrillo }; T3.roofU.tFachP = { value: tx.pintado }; }
+  const FACHADA = REALISTA ? `{
+        float L = vWl.z, H = vWl.w;
+        if (L > 1.2 && H > 2.4 && vWP.y > 0.05 && vWP.y < H - 0.12) {
+          float u = dot(vWP.xz - vWs, vWl.xy);
+          float cw = L / max(1.0, floor(L / 3.1));                  // módulos de ventana repartidos y centrados en ESTE muro
+          vec2 tuv = vec2(u / (cw * 4.0), vWP.y / 12.0);
+          vec3 base = diffuseColor.rgb;
+          float lad = 1.0 - smoothstep(0.35, 0.6, base.g / max(base.r, 1e-3)); // ladrillo (rojizo) o muro pintado
+          vec3 fb = texture2D(tFachB, tuv).rgb * clamp(base / vec3(0.375, 0.093, 0.039), 0.75, 1.3);
+          vec3 fp = texture2D(tFachP, tuv).rgb * base * 1.12;
+          diffuseColor.rgb = mix(fp, fb, lad);
+        }}` : null;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, T3.roofU);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 wall;\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpv = modelMatrix * vec4(position, 1.0); vWP = wpv.xyz; vWs = wpv.xz; vWl = wall;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn;')
+      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn;' + (FACHADA ? '\nuniform sampler2D tFachB, tFachP;' : ''))
       .replace('#include <color_fragment>', `#include <color_fragment>
       {
+        ${FACHADA || ''}
         float L = vWl.z, H = vWl.w;
+        if (${FACHADA ? 'false' : 'true'})
         if (L > 2.4 && H > 5.5 && vWP.y > 0.0 && vWP.y < H - 0.7) {
           float u = clamp(dot(vWP.xz - vWs, vWl.xy), 0.0, L);   // metros a lo largo de ESTE muro
           float cols = max(1.0, floor(L / 3.1)), cw = L / cols;     // ventanas repartidas y centradas en el muro
@@ -1363,7 +1413,7 @@ function materialEdificios(THREE) {
         }
       }`);
   };
-  mat.customProgramCacheKey = () => 'edificiosVentanas';
+  mat.customProgramCacheKey = () => REALISTA ? 'edificiosFachadaTex' : 'edificiosVentanas';
   T3.matEdif = mat;
   return mat;
 }
