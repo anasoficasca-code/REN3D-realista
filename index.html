@@ -836,6 +836,10 @@ if (QUEST) { LIVIANO = true; MEDIO = true; } // gafas independientes: versión l
 const REALISTA = new URLSearchParams(location.search).get('maqueta') !== '1';
 // ?vista=google: como God's Eye, SOLO la malla de Google al máximo detalle (sin edificios, árboles ni agua propios, sin gradación)
 const GOOGLE = REALISTA && new URLSearchParams(location.search).get('vista') === 'google';
+// ZONA DEL PROYECTO (vista realista, como Umbra y God's Eye): el detalle propio (edificios con ladrillo PBR, árboles reales, agua) va solo
+// alrededor del humedal El Burro; afuera el CONTEXTO es la malla 3D de Google tal cual (sin recortes ni gradación), como en God's Eye
+const ZON = REALISTA && !GOOGLE, ZONA = { x: 7437, y: 3271, r: 900 }; // coordenadas del modelo (m)
+const enZona = (x, y, margen = 0) => !ZON || (x - ZONA.x) ** 2 + (y - ZONA.y) ** 2 < (ZONA.r + margen) ** 2;
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
@@ -891,7 +895,7 @@ async function crearMallaGoogle(T) {
   tiles.setCamera(T.camera);
   tiles.setResolutionFromRenderer(T.camera, T.renderer);
   // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
-  T.errMeta = GOOGLE ? (T.movil ? 14 : 4) : REALISTA ? (T.movil ? 20 : 8) : (T.movil ? 28 : 14); // meta: menor = más nítido (fachadas) pero más descarga
+  T.errMeta = GOOGLE ? (T.movil ? 14 : 4) : REALISTA ? (T.movil ? 16 : 5) : (T.movil ? 28 : 14); // realista: contexto de Google nítido, como en God's Eye // meta: menor = más nítido (fachadas) pero más descarga
   tiles.errorTarget = 56;
   T.tilesErr = 0; T.tilesT0 = performance.now(); T.mallaMostrada = false;
   tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
@@ -912,7 +916,8 @@ async function crearMallaGoogle(T) {
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
   // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
   T.maskU = { uGrade: { value: REALISTA && !GOOGLE ? new THREE.Vector4(1.2, 0.9, 1.22, 1) : new THREE.Vector4(1, 1, 1, 0) }, uTint: { value: REALISTA && !GOOGLE ? new THREE.Vector3(1.04, 1.0, 0.93) : new THREE.Vector3(1, 1, 1) }, // saturación, contraste, brillo, quitar bruma · tinte
-    uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 } };
+    uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 },
+    uZona: { value: new THREE.Vector3(ZONA.x - LC.x, LC.y - ZONA.y, ZON ? ZONA.r : 1e9) } }; // fuera de la zona: malla de Google tal cual
   const recorte = (m) => {
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, T.maskU);
@@ -920,7 +925,7 @@ async function crearMallaGoogle(T) {
         .replace('#include <common>', '#include <common>\nvarying vec3 vWPm;')
         .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWPm = (modelMatrix * vec4(transformed, 1.0)).xyz;');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim; uniform vec4 uGrade; uniform vec3 uTint;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim; uniform vec4 uGrade; uniform vec3 uTint, uZona;')
         // gradación tipo render de maqueta (Umbra): quita la bruma gris de la foto aérea, sube saturación y contraste y la calienta un poco
         .replace('#include <opaque_fragment>', `{
           vec3 c = max(outgoingLight - uGrade.w * vec3(0.030, 0.036, 0.048), 0.0) / (1.0 - uGrade.w * 0.04);
@@ -928,11 +933,11 @@ async function crearMallaGoogle(T) {
           c = max(mix(vec3(l), c, uGrade.x), 0.0);
           c += uGrade.w * vec3(0.026, 0.032, 0.046) * (1.0 - smoothstep(0.0, 0.16, l)); // sombras abiertas y azuladas (luz de cielo), no negras
           c = pow(c / 0.18, vec3(uGrade.y)) * 0.18 * uGrade.z * uTint;
-          outgoingLight = c;
+          outgoingLight = mix(outgoingLight, c, 1.0 - smoothstep(uZona.z, uZona.z + 350.0, distance(vWPm.xz, uZona.xy))); // afuera de la zona, la foto tal cual
         }
         #include <opaque_fragment>`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-          if (uOn > 0.5 && vWPm.y > uCut) {
+          if (uOn > 0.5 && vWPm.y > uCut && distance(vWPm.xz, uZona.xy) < uZona.z) { // recorte de edificios de Google solo donde están los propios
             vec2 mu = vec2((vWPm.x + uLC.x) * uDim.x, 1.0 - (uLC.y - vWPm.z) * uDim.y);
             if (mu.x > 0.0 && mu.x < 1.0 && mu.y > 0.0 && mu.y < 1.0 && texture2D(uMask, mu).r < 0.5) discard;
           }`);
@@ -1223,7 +1228,7 @@ async function initTodoReal() {
     // edificios del modelo propio: volumen limpio con huellas y alturas reales, sobre el suelo fotográfico de Google
     // edificios en binario por celdas de 1 km (data3d/edif): primero las cercanas a la cámara, el resto en segundo plano
     const EI = await pEdifIdx;
-    const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
+    const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer()).filter(b => enZona(b.pts[0][0], b.pts[0][1])); // vista realista: solo la zona del proyecto
     const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
     if (!GOOGLE && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
     let B = [];
@@ -1233,7 +1238,7 @@ async function initTodoReal() {
     else if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
     else if (!LIVIANO) {
       const tx = 6675, ty = 3300; // punto que mira la cámara al abrir (avenida con tráfico)
-      const cel = EI.celdas.slice().sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
+      const cel = EI.celdas.filter(c => enZona(c.cx, c.cy, 800)).sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
       B = [].concat(...await Promise.all(cel.slice(0, 6).map(c => cargarEdif(c.f))));
       buildChunks(THREE, B); agregarHuellas(B);
       (async () => {
@@ -1254,7 +1259,7 @@ async function initTodoReal() {
     if (!REALISTA) {
       if (!realOK) await buildTreesReal(THREE, T);
       buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    } else if (!GOOGLE) buildWater(THREE, W); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
+    } else if (!GOOGLE) buildWater(THREE, W.filter(w => !w.pts || w.pts.some(p => enZona(p[0], p[1], 200)))); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -1301,7 +1306,7 @@ async function initTodoReal() {
       // copas simplificadas solo con ?copas=1: los modelos reales de Poly Haven (hojas y ramas) se ven mucho más reales
       if (REALISTA && new URLSearchParams(location.search).get('copas') === '1') { try { T3.trees = buildCopas(THREE, T); T3.counts.t = T.t.length; } catch (e) { console.warn('copas:', e); T3.trees = null; } marcarPaso('arboles'); T3.arbolesOk(); return; }
       try {
-        T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
+        T3.trees = await T3.R.buildTrees(T3, ZON ? { ...T, t: T.t.filter(t => enZona(t[0], t[1], 100)) } : T, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
       } catch (e) { console.warn('arboles reales:', e); T3.trees = null; try { await buildTreesReal(THREE, T); } catch (e2) { console.warn('trees:', e2); } }
