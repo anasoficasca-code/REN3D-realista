@@ -14,6 +14,8 @@
   "three/examples/jsm/": "https://unpkg.com/three@0.160.0/examples/jsm/",
   "3d-tiles-renderer": "https://unpkg.com/3d-tiles-renderer@0.3.45/src/index.js",
   "3d-tiles-renderer/plugins": "https://unpkg.com/3d-tiles-renderer@0.3.45/src/plugins/index.js",
+  "n8ao": "https://unpkg.com/n8ao@1.8.2/dist/N8AO.js",
+  "postprocessing": "https://unpkg.com/postprocessing@6.36.0/build/index.js",
   "@lumaai/luma-web": "https://unpkg.com/@lumaai/luma-web@0.2.0/dist/library/luma-web.module.js",
   "@mkkellogg/gaussian-splats-3d": "https://unpkg.com/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js"
 } }
@@ -776,7 +778,7 @@ function flight(ms) {
     T3.sun.target.position.copy(o.target);
     actualizarMalla(T3, dt);
     if (SIM) SIM.update(dt); // HUD, detección y seguimiento tipo God's Eye
-    if (!(SIM && SIM.render(cam))) T3.renderer.render(T3.scene, cam); // con un sensor (CRT, NVG, FLIR) dibuja el simulador
+    if (!(SIM && SIM.render(cam))) { if (T3.composer) T3.composer.render(); else T3.renderer.render(T3.scene, cam); } // con un sensor (CRT, NVG, FLIR) dibuja el simulador; si no, render con oclusión ambiental
     requestAnimationFrame(flight); return;
   }
   acc = Math.min(acc + ms, 60);
@@ -1221,6 +1223,7 @@ async function initTodoReal() {
     T3.edifOK = true; // los edificios los trae la malla de Google: el modo pájaro no debe agregar las cajas del modelo
     // modelos reales (Poly Haven CC0): árboles 3D con LOD, pasto/plantas 3D y agua con mapa de normales
     T3.realista = REALISTA; // real3d.js: carros a tamaño real, apoyados en el asfalto y con sombra de contacto
+    if (REALISTA && !LIVIANO && new URLSearchParams(location.search).get('ao') !== '0') crearPostproceso(T3).catch(e => console.warn('postproceso:', e)); // luz tipo render (oclusión ambiental)
     try { T3.R = await import('./data3d/real3d.js?v=47'); T3.env = T3.R.makeEnv(renderer); T3.fleet = T3.R.createFleet(T3, T3.env); } catch (e) { console.warn('real3d:', e); T3.R = null; T3.env = null; T3.fleet = null; }
     // el tráfico empieza a bajar YA (antes esperaba a edificios, vías y árboles): son pocos KB por trozo
     const pTraf = QUEST ? Promise.resolve(null) : buildTraffic(THREE).then(() => { marcarPaso('trafico'); return null; }, e => e);
@@ -1322,6 +1325,41 @@ async function initTodoReal() {
     say('⚠️ No cargó el mundo 3D: ' + String(e && e.message || e).slice(0, 110), 6000);
     return false;
   }
+}
+// LUZ TIPO RENDER (vista realista, como Umbra): oclusión ambiental N8AO (las esquinas, los pies de los edificios, los aleros, el interior
+// de las copas y el suelo junto a los muros se oscurecen suavemente, como con iluminación global), antialiasing SMAA y salida de color.
+// ?ao=0 lo desactiva (equipos lentos).
+async function crearPostproceso(T) {
+  const THREE = T.THREE;
+  const [{ EffectComposer }, { OutputPass }, { SMAAPass }, { N8AOPass }] = await Promise.all([
+    import('three/addons/postprocessing/EffectComposer.js'), import('three/addons/postprocessing/OutputPass.js'),
+    import('three/addons/postprocessing/SMAAPass.js'), import('n8ao')]);
+  const r = T.renderer, sz = r.getDrawingBufferSize(new THREE.Vector2());
+  const comp = new EffectComposer(r, new THREE.WebGLRenderTarget(sz.x, sz.y, { type: THREE.HalfFloatType }));
+  const ao = new N8AOPass(T.scene, T.camera, sz.x, sz.y);
+  Object.assign(ao.configuration, { aoRadius: 9.0, distanceFalloff: 1.5, intensity: 4.5, color: new THREE.Color(0x0b1220), halfRes: true, gammaCorrection: false, screenSpaceRadius: false });
+  ao.setQualityMode('Medium');
+  comp.addPass(ao);
+  comp.addPass(new SMAAPass(sz.x, sz.y));
+  comp.addPass(new OutputPass());
+  // gradación final tipo render de maqueta: contraste en S, algo más de color, medios tonos cálidos y viñeta suave
+  const { ShaderPass } = await import('three/addons/postprocessing/ShaderPass.js');
+  comp.addPass(new ShaderPass({
+    uniforms: { tDiffuse: { value: null } },
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+      void main(){
+        vec3 c = texture2D(tDiffuse, vUv).rgb;
+        c = mix(c, c * c * (3.0 - 2.0 * c), 0.35);                       // contraste en S (sombras más firmes, luces limpias)
+        float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+        c = mix(vec3(l), c, 1.18);                                       // saturación
+        c *= mix(vec3(1.0), vec3(1.04, 1.0, 0.95), smoothstep(0.15, 0.7, l)); // medios y luces algo cálidos
+        vec2 q = vUv - 0.5; c *= 1.0 - 0.22 * dot(q, q);                  // viñeta suave
+        gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+      }`
+  }));
+  T.composer = comp; T.ao = ao;
+  addEventListener('resize', () => { const s = r.getDrawingBufferSize(new THREE.Vector2()); comp.setSize(innerWidth, innerHeight); ao.setSize(s.x, s.y); });
 }
 // vista realista (tipo Umbra): colores de Kennedy en sRGB, pasados a lineal (antes un ladrillo 0,62 lineal se veía casi blanco).
 // Conjuntos altos casi todos en ladrillo a la vista; casas bajas pintadas (blanco, crema, salmón, verde agua) o en ladrillo.
