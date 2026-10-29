@@ -832,6 +832,8 @@ if (QUEST) { LIVIANO = true; MEDIO = true; } // gafas independientes: versión l
 // REALISTA (por defecto): el mundo es la malla fotorrealista de Google completa, como Google Earth en 3D; sobre ella solo van carros, peatones y aves.
 // ?maqueta=1 vuelve a la maqueta propia (edificios, vías, agua, parques y árboles del modelo encima de la foto)
 const REALISTA = new URLSearchParams(location.search).get('maqueta') !== '1';
+// ?vista=google: como God's Eye, SOLO la malla de Google al máximo detalle (sin edificios, árboles ni agua propios, sin gradación)
+const GOOGLE = REALISTA && new URLSearchParams(location.search).get('vista') === 'google';
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
@@ -886,7 +888,7 @@ async function crearMallaGoogle(T) {
   tiles.setCamera(T.camera);
   tiles.setResolutionFromRenderer(T.camera, T.renderer);
   // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
-  T.errMeta = REALISTA ? (T.movil ? 20 : 8) : (T.movil ? 28 : 14); // meta: menor = más nítido (fachadas) pero más descarga
+  T.errMeta = GOOGLE ? (T.movil ? 14 : 4) : REALISTA ? (T.movil ? 20 : 8) : (T.movil ? 28 : 14); // meta: menor = más nítido (fachadas) pero más descarga
   tiles.errorTarget = 56;
   T.tilesErr = 0; T.tilesT0 = performance.now(); T.mallaMostrada = false;
   tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
@@ -906,7 +908,7 @@ async function crearMallaGoogle(T) {
   aplicarMalla(T, tiles);
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
   // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
-  T.maskU = { uGrade: { value: REALISTA ? new THREE.Vector4(1.2, 0.9, 1.22, 1) : new THREE.Vector4(1, 1, 1, 0) }, uTint: { value: REALISTA ? new THREE.Vector3(1.04, 1.0, 0.93) : new THREE.Vector3(1, 1, 1) }, // saturación, contraste, brillo, quitar bruma · tinte
+  T.maskU = { uGrade: { value: REALISTA && !GOOGLE ? new THREE.Vector4(1.2, 0.9, 1.22, 1) : new THREE.Vector4(1, 1, 1, 0) }, uTint: { value: REALISTA && !GOOGLE ? new THREE.Vector3(1.04, 1.0, 0.93) : new THREE.Vector3(1, 1, 1) }, // saturación, contraste, brillo, quitar bruma · tinte
     uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 } };
   const recorte = (m) => {
     m.onBeforeCompile = (sh) => {
@@ -1214,11 +1216,12 @@ async function initTodoReal() {
     const EI = await pEdifIdx;
     const cargarEdif = async (f) => decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer());
     const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
-    if (!(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
+    if (!GOOGLE && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
     let B = [];
     // edificios 3D propios (huellas y alturas reales) también en la vista fotorrealista: la malla de Google en Kennedy los trae
     // casi planos ("derretidos"); como en las maquetas de Umbra, se levantan volúmenes limpios y el techo toma el color de la foto aérea
-    if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
+    if (GOOGLE) {} // vista Google 3D: los edificios son los de la malla
+    else if (LIVIANO && MEDIO) { B = await cargarEdif(EI.humedal.f); buildChunks(THREE, B); agregarHuellas(B); }
     else if (!LIVIANO) {
       const tx = 6675, ty = 3300; // punto que mira la cámara al abrir (avenida con tráfico)
       const cel = EI.celdas.slice().sort((a, b) => Math.hypot(a.cx - tx, a.cy - ty) - Math.hypot(b.cx - tx, b.cy - ty));
@@ -1242,7 +1245,7 @@ async function initTodoReal() {
     if (!REALISTA) {
       if (!realOK) await buildTreesReal(THREE, T);
       buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    } else buildWater(THREE, W); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
+    } else if (!GOOGLE) buildWater(THREE, W); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -1266,6 +1269,7 @@ async function initTodoReal() {
       if (REALISTA && T3.waterMesh) { // un metro arriba y adelantada en profundidad: el suelo de la foto de Google varía y la tapaba a trozos
         T3.waterMesh.position.y += 1.0; const wm = T3.waterMesh.material; wm.polygonOffset = true; wm.polygonOffsetFactor = -2; wm.polygonOffsetUnits = -8;
       } // realista: el agua, el pasto y el suelo son los de la foto; los árboles 3D sí van encima (como en Umbra)
+      if (GOOGLE) { T3.trees = null; marcarPaso('arboles'); T3.arbolesOk(); return; } // árboles: los de la malla de Google
       if (REALISTA) { try { T3.trees = buildCopas(THREE, T); T3.counts.t = T.t.length; } catch (e) { console.warn('copas:', e); T3.trees = null; } marcarPaso('arboles'); T3.arbolesOk(); return; }
       try {
         T3.trees = await T3.R.buildTrees(T3, T, W, lw, T3.env);
@@ -2867,7 +2871,7 @@ $('b-hd').onclick = async () => {
   }
 };
 
-import('./data3d/simulador.js?v=4').then(m => {
+import('./data3d/simulador.js?v=5').then(m => {
   SIM = m.crearSimulador({
     T3: () => T3, traf: () => TRAF, peat: () => PEAT, pajaro: () => PAJARO, say, movil: MOVIL,
     mundoALL: (x, z) => dataToLL(x + LC.x, LC.y - z), // [lng, lat] del punto del mundo 3D

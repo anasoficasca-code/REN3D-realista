@@ -113,6 +113,9 @@ const HTML = `
 <button id="gevTog" type="button" aria-expanded="false">PANEL</button>
 <div id="gevUI">
   <section class="g-col g-left">
+    <div class="g-pan"><h3>VISTA</h3>
+      <div class="g-seg" id="g-vista" style="grid-template-columns:repeat(3,1fr)"><button data-vista="umbra">Umbra</button><button data-vista="google">Google 3D</button><button data-vista="maqueta">Maqueta</button></div>
+    </div>
     <div class="g-pan"><h3>SENSOR <em id="g-keys">1-4</em></h3>
       <div class="g-seg" id="g-sens"><button data-m="0" class="on">Normal</button><button data-m="1">CRT</button><button data-m="2">NVG</button><button data-m="3">FLIR</button></div>
       <div class="g-row"><button id="g-pal" style="grid-column:1/3">Paleta: blanco caliente</button></div>
@@ -248,6 +251,14 @@ export function crearSimulador(ctx) {
     $('grade').style.display = m ? 'none' : '';
   }
   document.querySelectorAll('#g-sens button').forEach(b => b.onclick = () => setModo(+b.dataset.m));
+  { // vista: Umbra (edificios y árboles propios sobre la foto), Google 3D (solo la malla, como God's Eye) o la maqueta propia
+    const q = new URLSearchParams(location.search), actual = q.get('maqueta') === '1' ? 'maqueta' : q.get('vista') === 'google' ? 'google' : 'umbra';
+    document.querySelectorAll('#g-vista button').forEach(b => {
+      b.classList.toggle('on', b.dataset.vista === actual);
+      b.onclick = () => { if (b.dataset.vista === actual) return; const u = new URL(location.href); u.searchParams.delete('maqueta'); u.searchParams.delete('vista');
+        if (b.dataset.vista === 'maqueta') u.searchParams.set('maqueta', '1'); if (b.dataset.vista === 'google') u.searchParams.set('vista', 'google'); location.href = u.toString(); };
+    });
+  }
   $('g-pal').onclick = (e) => { S.pal = S.pal ? 0 : 1; e.currentTarget.textContent = 'Paleta: ' + (S.pal ? 'ironbow' : 'blanco caliente'); setModo(S.modo); };
   $('g-det').onclick = (e) => { S.det = !S.det; e.currentTarget.classList.toggle('on', S.det); };
   $('g-lbl').onclick = (e) => { S.lbl = !S.lbl; e.currentTarget.classList.toggle('on', S.lbl); };
