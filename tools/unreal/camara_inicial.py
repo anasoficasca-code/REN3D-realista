@@ -1,7 +1,7 @@
 """La cámara del giro queda activa desde que arranca el juego y mirando como el fotograma 0,
 para que durante la espera inicial Cesium baje justo las teselas que se van a ver."""
 import math, unreal
-RADIO_M, ALTO_M = 900.0, 380.0
+RADIO_M, ALTO_M = 650.0, 260.0  # igual que armar_escena.py
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 les.load_level('/Game/Kennedy/Kennedy')
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)

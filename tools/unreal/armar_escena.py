@@ -10,7 +10,7 @@ def log(s):
 
 TOKEN = open(os.path.join(PROY, 'Config', 'cesium_ion_token.txt'), encoding='utf-8').read().strip()  # token local (no va a GitHub)
 LAT, LON, H = 4.640683, -74.149778, 2548.0  # centro del humedal El Burro (georreferencia del modelo) y altura elipsoidal del suelo
-FRAMES, RADIO_M, ALTO_M, FOCAL = 72, 900.0, 380.0, 24.0
+FRAMES, RADIO_M, ALTO_M, FOCAL = 72, 650.0, 260.0, 20.0  # dron más bajo y lente más abierta, como las maquetas de Umbra (horizonte y cerros en cuadro)
 
 les = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 eas = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -44,7 +44,8 @@ log('tileset: asset %s, sse %s' % (ts.get_editor_property('ion_asset_id'), ts.ge
 # ---------- sol y cielo (Bogotá, tarde) ----------
 sky = eas.spawn_actor_from_class(unreal.CesiumSunSky, unreal.Vector(0, 0, 0))
 sky.set_actor_label('Sol_y_cielo')
-for k, v in (('time_zone', -5.0), ('solar_time', 16.4), ('day', 15), ('month', 1), ('year', 2026), ('use_daylight_saving_time', False)):
+# media mañana (10:48): sombras cortas, la foto de Google ya trae las suyas
+for k, v in (('time_zone', -5.0), ('solar_time', 10.8), ('day', 15), ('month', 1), ('year', 2026), ('use_daylight_saving_time', False)):
     try:
         sky.set_editor_property(k, v)
     except Exception as e:
@@ -59,7 +60,7 @@ log('sol: hora solar %s' % sky.get_editor_property('solar_time'))
 fog = eas.spawn_actor_from_class(unreal.ExponentialHeightFog, unreal.Vector(0, 0, 0))
 fog.set_actor_label('Bruma')
 fc = fog.get_component_by_class(unreal.ExponentialHeightFogComponent)
-fc.set_editor_property('fog_density', 0.0035)
+fc.set_editor_property('fog_density', 0.002)  # aire limpio cerca, bruma azulada solo a lo lejos
 fc.set_editor_property('fog_height_falloff', 0.04)
 fc.set_editor_property('fog_inscattering_luminance', unreal.LinearColor(0.55, 0.65, 0.8, 1.0))
 
@@ -80,12 +81,14 @@ def pp(nombre, valor):
 pp('auto_exposure_method', unreal.AutoExposureMethod.AEM_HISTOGRAM)
 pp('auto_exposure_min_brightness', 12.5)
 pp('auto_exposure_max_brightness', 14.5)
-pp('auto_exposure_bias', 0.3)
-pp('bloom_intensity', 0.35)
-pp('vignette_intensity', 0.28)
-pp('color_saturation', unreal.Vector4(1.08, 1.08, 1.08, 1.0))
-pp('color_contrast', unreal.Vector4(1.06, 1.06, 1.06, 1.0))
-pp('white_temp', 6200.0)
+pp('auto_exposure_bias', 0.55)  # imagen luminosa, como los renders de Umbra
+pp('bloom_intensity', 0.3)
+pp('vignette_intensity', 0.18)
+pp('color_saturation', unreal.Vector4(1.22, 1.22, 1.22, 1.0))
+pp('color_contrast', unreal.Vector4(1.08, 1.08, 1.08, 1.0))
+pp('color_gamma_shadows', unreal.Vector4(1.0, 1.0, 1.0, 1.18))  # sombras abiertas, no negras
+pp('color_saturation_highlights', unreal.Vector4(1.0, 1.0, 1.0, 0.95))
+pp('white_temp', 7000.0)  # punto blanco frío -> imagen algo más cálida
 pp('lens_flare_intensity', 0.0)
 pp('motion_blur_amount', 0.0)
 ppv.set_editor_property('settings', ps)
@@ -110,7 +113,9 @@ seq = tools.create_asset('Giro', '/Game/Kennedy', unreal.LevelSequence, unreal.L
 seq.set_display_rate(unreal.FrameRate(24, 1))
 seq.set_playback_start(0)
 seq.set_playback_end(FRAMES)
-b = seq.add_possessable(cam)
+# cámara propia de la secuencia (spawnable): con UE 5.8.3 la cámara del nivel enlazada (possessable) no se resolvía al renderizar
+# y todos los fotogramas salían iguales o desde la cámara por defecto
+b = unreal.MovieSceneSequenceExtensions.add_spawnable_from_instance(seq, cam)
 tr = b.add_track(unreal.MovieScene3DTransformTrack)
 sec = tr.add_section()
 sec.set_range(0, FRAMES + 1)

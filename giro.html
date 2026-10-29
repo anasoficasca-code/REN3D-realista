@@ -91,7 +91,7 @@
 (function () {
   'use strict';
   // ---- datos del giro (deben coincidir con Scripts/armar_escena.py del proyecto Kennedy360) ----
-  const G = { N: 72, RADIO: 900, ALTO: 380, OBJ_Z: 25, FOCAL: 24, SENSOR_W: 36, ASPECTO: 16 / 9, LAT: 4.640683, LON: -74.149778 };
+  const G = { N: 72, RADIO: 650, ALTO: 260, OBJ_Z: 25, FOCAL: 20, SENSOR_W: 36, ASPECTO: 16 / 9, LAT: 4.640683, LON: -74.149778 };
   const MXg = 111320 * Math.cos(4.63 * Math.PI / 180), MYg = 110540;
   // puntos del territorio (lat, lng reales; alto de la etiqueta en m)
   const PUNTOS = [
@@ -158,7 +158,7 @@
     $('grados').textContent = Math.round(actual * 360 / G.N) + '°';
   }
 
-  // ---- marcadores: misma cámara que el render (órbita, objetivo, lente de 24 mm) ----
+  // ---- marcadores: misma cámara que el render (órbita, objetivo, lente de 20 mm) ----
   const pins = PUNTOS.map(p => {
     const d = document.createElement('div'); d.className = 'pin';
     d.innerHTML = '<div class="et"><i></i>' + p.n + '</div><div class="palo"></div>';
