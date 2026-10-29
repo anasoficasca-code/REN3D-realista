@@ -5,7 +5,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>REN3D • Kennedy 3D · Territorio Real</title>
+<title>REN3D • Kennedy · Simulador</title>
 <link rel="icon" href="data:,">
 <script type="importmap">
 { "imports": {
@@ -159,7 +159,7 @@
   <div class="cv-card">
     <div class="cv-brand"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg><span>REN3D</span></div>
     <h1>Kennedy <span>3D</span></h1>
-    <div class="cv-sub">Maqueta territorial de Kennedy · Bogotá</div>
+    <div class="cv-sub">Simulador territorial de Kennedy · Bogotá</div>
     <ul class="cv-steps">
       <li data-k="edif"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21V5l8-3v19"/><path d="M12 21V9l8 3v9"/><path d="M8 7h.01M8 11h.01M8 15h.01M16 14h.01M16 18h.01"/><path d="M2 21h20"/></svg><span>Edificios</span><i class="st"></i></li>
       <li data-k="capas"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg><span>Vías, agua y parques</span><i class="st"></i></li>
@@ -207,7 +207,6 @@
 <div class="hud" id="hud-c">
   <button id="b-sat" hidden style="display:none">🛰️ Satélite</button>
   <button id="b-todo" class="on"><svg class="ic " viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 3 7v10l9 5 9-5V7z"/><path d="m3 7 9 5 9-5"/><path d="M12 12v10"/></svg>Maqueta 3D</button>
-  <button id="b-giro" onclick="location.href='giro.html'" title="Vista fotorrealista 360°"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>360</button>
   <button id="b-splat" hidden style="display:none">🌀 Splat Humedal</button>
   <button id="b-hd" hidden style="display:none">📦 HD</button>
   <button id="b-tour" hidden style="display:none">▶ Tour Kennedy</button>
@@ -590,6 +589,7 @@ let mode = 'todo';
 let T3 = null, tourT = null;
 let SPLAT = null;
 let PAJARO = null; // modo pájaro (juego de vuelo y realidad virtual), se crea al pulsar el botón
+let SIM = null; // simulador tipo God's Eye (data3d/simulador.js): HUD táctico, sensores, detección, seguimiento y panel de tráfico
 const SPLAT_URL = 'data3d/humedal-v3.splat';
 const SPLAT_HD = 'data3d/humedal-hd.splat';
 
@@ -725,7 +725,7 @@ addEventListener('keypress', e => {
 
 let acc = 0;
 function flight(ms) {
-  if (PAJARO && PAJARO.activo) { requestAnimationFrame(flight); return; } // el modo pájaro dibuja con su propio bucle (también el de WebXR)
+  if (PAJARO && PAJARO.activo) { if (SIM) SIM.update(0); requestAnimationFrame(flight); return; } // (SIM.update oculta el HUD del simulador mientras se juega) // el modo pájaro dibuja con su propio bucle (también el de WebXR)
   if (mode === 'splat' && SPLAT) { splatKeys(); requestAnimationFrame(flight); return; }
   if (mode === 'todo' && T3) {
     const now = performance.now();
@@ -772,7 +772,8 @@ function flight(ms) {
     T3.sun.position.copy(o.target).add(T3.sunOff);
     T3.sun.target.position.copy(o.target);
     actualizarMalla(T3, dt);
-    T3.renderer.render(T3.scene, cam);
+    if (SIM) SIM.update(dt); // HUD, detección y seguimiento tipo God's Eye
+    if (!(SIM && SIM.render(cam))) T3.renderer.render(T3.scene, cam); // con un sensor (CRT, NVG, FLIR) dibuja el simulador
     requestAnimationFrame(flight); return;
   }
   acc = Math.min(acc + ms, 60);
@@ -830,7 +831,7 @@ if (QUEST) { LIVIANO = true; MEDIO = true; } // gafas independientes: versión l
 const MOVIL = QUEST || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || (matchMedia('(pointer:coarse)').matches && Math.min(screen.width, screen.height) < 900);
 if (MOVIL) { LIVIANO = true; MEDIO = true; } // celular: sin sombras ni tráfico pesado, árboles más livianos y sin los modelos pesados, pero CON los edificios del entorno del humedal (archivo recortado de ~3 MB) desde que abre
 const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver de la noche)
-  fondo: 0xa9cbe6, niebla: 0xcfdde8, densNiebla: 0.00017, // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
+  fondo: 0xa9cbe6, niebla: 0xcfdde8, densNiebla: 0.000055, // bruma ligera: los cerros a 10-20 km se ven con perspectiva atmosférica // bruma que aclara y desatura lo lejano (perspectiva atmosférica)
   top: 0x2a6fc4, mid: 0x74afe3, bot: 0xdbe6ea, nubes: 0.5,
   hemiCielo: 0xb4d3ff, hemiSuelo: 0x7a6f4a, hemi: 0.86, // luz de cielo azulada arriba y rebote cálido del suelo
   solColor: 0xffe6bf, sol: 3.0, exposicion: 1.0 // sol cálido y fuerte: más contraste entre luz y sombra
@@ -919,7 +920,9 @@ async function crearMallaGoogle(T) {
     m.customProgramCacheKey = () => 'recorteHuellas';
     m.needsUpdate = true;
   };
+  T.tilesCargadas = 0;
   tiles.addEventListener('load-model', ({ scene }) => {
+    T.tilesCargadas++;
     scene.traverse(c => {
       const m = c.isMesh && c.material;
       if (!m || !m.map) return;
@@ -928,10 +931,12 @@ async function crearMallaGoogle(T) {
       else { m.emissiveMap = m.map; m.emissive.setScalar(T.tilesLuz); m.color.setScalar(0); m.roughness = 1; m.metalness = 0; m.toneMapped = false; m.needsUpdate = true; }
       c.castShadow = false; c.receiveShadow = false;
       c.renderOrder = -10; // la foto de Google se dibuja ANTES que el modelo propio (ver el borrado de profundidad más abajo)
+      c.layers.enable(1); // capa de la vista cenital (fotos de las cubiertas)
     });
   });
   T.tiles = tiles;
   T.scene.add(tiles.group);
+  crearOrto(T);
   if (new URLSearchParams(location.search).get('debug') === '1') { // ?debug=1: estado de la malla en pantalla
     const d = document.createElement('div');
     d.style.cssText = 'position:fixed;left:8px;top:8px;z-index:30;font:11px ui-monospace,monospace;color:#7dd3fc;background:rgba(5,10,16,.8);padding:6px 9px;border-radius:6px;max-width:92vw';
@@ -972,6 +977,31 @@ function cargarMascara(T, f) {
     tex.colorSpace = THREE.NoColorSpace; tex.format = THREE.RedFormat; tex.needsUpdate = true;
     T.maskU.uMask.value = tex; T.maskU.uOn.value = 1;
   }, undefined, e => console.warn('máscara de huellas:', e));
+}
+// CUBIERTAS REALES: se dibuja la malla de Google vista desde arriba (cámara ortográfica) en una textura que cubre ~1,8 km
+// alrededor de la cámara; los techos de los edificios del modelo toman de ahí el color real de su cubierta.
+function crearOrto(T) {
+  const THREE = T.THREE, S = T.movil ? 1024 : 2048, H = 900;
+  const cam = new THREE.OrthographicCamera(-H, H, H, -H, 10, 2600);
+  cam.up.set(0, 0, -1); cam.layers.set(1); // norte arriba; solo la malla de Google
+  T.ortho = { cam, H, rt: new THREE.WebGLRenderTarget(S, S, { depthBuffer: true }), cx: 1e9, cz: 1e9, t: 0, cargadas: -1, vp: new THREE.Matrix4() };
+}
+function actualizarOrto(T) {
+  const o = T.ortho; if (!o || !T.mallaMostrada || !T.roofU) return;
+  const tgt = T.orbit.target, ahora = performance.now();
+  const movida = Math.hypot(tgt.x - o.cx, tgt.z - o.cz) > o.H * 0.3;
+  const nuevas = T.tilesCargadas !== o.cargadas && ahora - o.t > 2000;
+  if (!movida && !nuevas) return;
+  o.cx = tgt.x; o.cz = tgt.z; o.t = ahora; o.cargadas = T.tilesCargadas;
+  o.cam.position.set(tgt.x, 1300, tgt.z); o.cam.lookAt(tgt.x, 0, tgt.z); o.cam.updateMatrixWorld();
+  const r = T.renderer, fog = T.scene.fog, mOn = T.maskU ? T.maskU.uOn.value : 0, rt0 = r.getRenderTarget(), cc = new T.THREE.Color(); r.getClearColor(cc); const ca = r.getClearAlpha();
+  const vis = T.tiles.group.visible;
+  T.scene.fog = null; if (T.maskU) T.maskU.uOn.value = 0; T.tiles.group.visible = true; // sin recorte: se ven los techos reales
+  r.setRenderTarget(o.rt); r.setClearColor(0x000000, 0); r.clear(); r.render(T.scene, o.cam);
+  r.setRenderTarget(rt0); r.setClearColor(cc, ca);
+  T.scene.fog = fog; if (T.maskU) T.maskU.uOn.value = mOn; T.tiles.group.visible = vis;
+  o.vp.multiplyMatrices(o.cam.projectionMatrix, o.cam.matrixWorldInverse);
+  T.roofU.uOrtoVP.value.copy(o.vp); T.roofU.uOrto.value = o.rt.texture; T.roofU.uOrtoOn.value = 1;
 }
 function aplicarMalla(T, tiles) {
   const tl = tiles || T.tiles;
@@ -1016,6 +1046,7 @@ function actualizarMallaIn(T, tl, dt) {
   tl.setResolutionFromRenderer(T.camera, T.renderer);
   T.camera.updateMatrixWorld();
   tl.update();
+  actualizarOrto(T);
   if (!T.mallaMostrada) {
     const st = tl.stats, listo = st.downloading === 0 && st.parsing === 0 && st.visible > 8;
     if (listo || performance.now() - T.tilesT0 > 40000) { T.mallaMostrada = true; tl.group.visible = true; marcarPaso('foto'); }
@@ -1231,12 +1262,14 @@ function materialEdificios(THREE) {
   if (T3.matEdif) return T3.matEdif;
   const mat = LIVIANO ? new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true }) // celular/gafas: material barato
     : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true, roughness: 0.86, metalness: 0, envMap: T3.env || null, envMapIntensity: 0.55 });
+  T3.roofU = { uOrto: { value: null }, uOrtoVP: { value: new THREE.Matrix4() }, uOrtoOn: { value: 0 } };
   mat.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, T3.roofU);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec4 wall;\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpv = modelMatrix * vec4(position, 1.0); vWP = wpv.xyz; vWs = wpv.xz; vWl = wall;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
+      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn;')
       .replace('#include <color_fragment>', `#include <color_fragment>
       {
         float L = vWl.z, H = vWl.w;
@@ -1268,6 +1301,18 @@ function materialEdificios(THREE) {
           c = mix(c, marco, max(mull, trav) * 0.9);
           c *= 1.0 - 0.08 * (1.0 - smoothstep(0.0, 0.025 + e, fv));     // línea de losa entre pisos
           diffuseColor.rgb = mix(base * 0.86, c, k);
+        }
+        // cubierta real: el techo toma el color de la foto aérea (vista cenital de la malla de Google)
+        if (uOrtoOn > 0.5) {
+          vec3 fnr = normalize(cross(dFdx(vWP), dFdy(vWP)));
+          if (abs(fnr.y) > 0.6) {
+            vec4 q = uOrtoVP * vec4(vWP, 1.0); vec2 uvr = q.xy * 0.5 + 0.5;
+            if (uvr.x > 0.0 && uvr.x < 1.0 && uvr.y > 0.0 && uvr.y < 1.0) {
+              vec4 foto = texture2D(uOrto, uvr);
+              float borde = smoothstep(0.0, 0.06, min(min(uvr.x, 1.0 - uvr.x), min(uvr.y, 1.0 - uvr.y))); // se funde en el borde de la zona cubierta
+              diffuseColor.rgb = mix(diffuseColor.rgb, foto.rgb * 1.08, foto.a * borde);
+            }
+          }
         }
       }`);
   };
@@ -1749,14 +1794,15 @@ async function buildTraffic(THREE) {
   if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true;
   T3.scene.add(bodies, cabins, wheels);
   // arranca a las 16:40 (ya hay unos 2.000 carros en la calle) y en marcha; la barra de abajo permite pausar y mover el tiempo
-  TRAF = { steps, NS, NV, dur, maxi, t: tIni, playing: true, pedirTrozo, chunk: I.chunk, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi) };
+  TRAF = { steps, NS, NV, dur, maxi, t: tIni, playing: true, vel: 1, pedirTrozo, chunk: I.chunk, bodies, cabins, wheels, dummy: new THREE.Object3D(), head: new Float32Array(maxi),
+    vis: { n: 0, x: new Float32Array(maxi), z: new Float32Array(maxi), dx: new Float32Array(maxi), dz: new Float32Array(maxi), v: new Float32Array(maxi), id: new Int32Array(maxi) } }; // vis: posición y velocidad de cada carro en este cuadro (detección y seguimiento del simulador)
   T3.counts.cars = NV;
   if (window.trafficPaint) window.trafficPaint();
   updateTraffic(0);
 }
 function updateTraffic(dt) {
   if (!TRAF) return;
-  if (TRAF.playing) TRAF.t += dt;
+  if (TRAF.playing) TRAF.t += dt * (TRAF.vel || 1);
   if (TRAF.t > TRAF.dur) TRAF.t -= (TRAF.dur + 1);
   if (window.trafficUI) window.trafficUI(TRAF.t, TRAF.dur);
   const k0 = Math.floor(TRAF.t) % TRAF.NS, k1 = (k0 + 1) % TRAF.NS;
@@ -1779,6 +1825,7 @@ function updateTraffic(dt) {
     if (dx * dx + dy * dy > 1e-6) TRAF.head[n] = Math.atan2(-dy, dx);
     const hd = TRAF.head[n];
     const px = x0 + dx * f, pz = y0 + dy * f;
+    const V = TRAF.vis; V.x[n] = px; V.z[n] = pz; V.dx[n] = dx; V.dz[n] = dy; V.v[n] = Math.hypot(dx, dy); V.id[n] = A.ids[i]; // un paso = 1 s: dx, dy en m/s
     if (F) { // el modelo mira hacia +Z: el giro es atan2(dx, dz) y el carro avanza de frente
       if (!TRAF.headF) TRAF.headF = new Float32Array(TRAF.maxi);
       if (dx * dx + dy * dy > 1e-6) TRAF.headF[n] = Math.atan2(dx, dy);
@@ -1800,6 +1847,7 @@ function updateTraffic(dt) {
     }
     n++;
   }
+  TRAF.vis.n = n;
   if (F && T3.extraCars) T3.extraCars(F); // carros extra de la avenida del humedal (modo pájaro)
   if (F) { F.end((T3.vpos || T3.camera.position).x, (T3.vpos || T3.camera.position).z); n = 0; } // las cajas del tráfico antiguo quedan ocultas
   TRAF.bodies.count = n; TRAF.cabins.count = n; TRAF.wheels.count = n * 4;
@@ -2181,7 +2229,7 @@ function buildPeatones(THREE, N) {
   const mesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), list.length);
   mesh.count = 0; mesh.frustumCulled = false; mesh.castShadow = false; mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); T3.scene.add(mesh);
-  PEAT = { list, mesh, d: new THREE.Object3D() };
+  PEAT = { list, mesh, d: new THREE.Object3D(), vx: new Float32Array(list.length), vz: new Float32Array(list.length), vn: 0 }; // vx/vz: peatones dibujados en este cuadro (detección del simulador)
   T3.counts.peatones = list.length;
 }
 function mergeGeoms(THREE, gs) { // une geometrías con los mismos atributos (posición, normal, color)
@@ -2210,9 +2258,9 @@ function updatePeatones(dt) {
     const paso = Math.sin(t * 7 + p.ph);
     d.position.set(x, 0.56 + Math.abs(paso) * 0.045, z);
     d.rotation.set(0, Math.atan2(b[0] - a[0], b[1] - a[1]) + (p.dir < 0 ? Math.PI : 0), paso * 0.06);
-    d.scale.setScalar(p.h); d.updateMatrix(); m.setMatrixAt(n, d.matrix); m.setColorAt(n, p.col); n++;
+    d.scale.setScalar(p.h); d.updateMatrix(); m.setMatrixAt(n, d.matrix); m.setColorAt(n, p.col); PEAT.vx[n] = x; PEAT.vz[n] = z; n++;
   }
-  m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  PEAT.vn = n; m.count = n; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
 }
 function buildAves(THREE) {
   T3.avesU = { value: 0 };
@@ -2625,6 +2673,13 @@ $('b-hd').onclick = async () => {
   }
 };
 
+import('./data3d/simulador.js?v=2').then(m => {
+  SIM = m.crearSimulador({
+    T3: () => T3, traf: () => TRAF, peat: () => PEAT, pajaro: () => PAJARO, say, movil: MOVIL,
+    mundoALL: (x, z) => dataToLL(x + LC.x, LC.y - z), // [lng, lat] del punto del mundo 3D
+    sectores: POIS.map(p => { const L = poiLocal(p), w = lw(L[0], L[1]); return { n: p.n, x: w[0], z: w[1] }; })
+  });
+}).catch(e => console.warn('simulador:', e));
 addEventListener('resize', () => { try { if (T3) { T3.camera.aspect = innerWidth / innerHeight; T3.camera.updateProjectionMatrix(); T3.renderer.setSize(innerWidth, innerHeight); } } catch (e) {} });
 </script>
 </body>

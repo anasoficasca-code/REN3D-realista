@@ -1,5 +1,17 @@
 # REN3D realista · Maqueta de Kennedy
 
+## Simulador tipo God's Eye
+
+La maqueta abre como simulador de vigilancia y tráfico (`data3d/simulador.js`), con la interfaz y los sensores inspirados en [God's Eye View](https://github.com/bilawalsidhu/gods-eye-view) (MIT, © 2026 Bilawal Sidhu):
+
+- **HUD táctico:** REC y hora UTC, coordenadas del punto mirado, sector, GSD, altitud, rumbo y ángulo fuera del nadir.
+- **Sensores (teclas 1-4):** Normal, CRT, NVG (visión nocturna) y FLIR (blanco caliente o ironbow). En FLIR el calor de motores y peatones es simulado a partir de su posición.
+- **Detección:** recuadros con ID y velocidad sobre los carros de la simulación y los peatones cercanos.
+- **Seguimiento:** clic sobre un carro o en la lista de contactos; la cámara lo acompaña con estela, velocidad, rumbo, posición y recorrido. `Esc` lo suelta.
+- **Tráfico:** hora simulada, pausa, velocidad x1/x2/x5/x10, línea de tiempo, vehículos activos, velocidad media, porcentaje detenido y gráfica de velocidad media.
+- **Vistas:** cenital (desde arriba) y oblicua (35°).
+- **Celular:** el botón PANEL abre los controles como hoja inferior.
+
 ## Kennedy 360 (giro fotorrealista, como las maquetas de Umbra)
 
 Web: https://anasoficasca-code.github.io/REN3D-realista/giro.html
