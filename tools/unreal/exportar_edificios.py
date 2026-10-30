@@ -40,6 +40,17 @@ def limpiar(poly):  # quita puntos repetidos y alineados (trababan el recorte de
                 p.pop(k); cambio = True; break
     return p
 
+def adentro(poly, d):  # offset hacia adentro de un polígono antihorario (inglete); None si se invierte o se cruza
+    n = len(poly); out = []
+    for i in range(n):
+        a, b, c = poly[i - 1], poly[i], poly[(i + 1) % n]
+        l1 = math.hypot(b[0] - a[0], b[1] - a[1]) or 1; l2 = math.hypot(c[0] - b[0], c[1] - b[1]) or 1
+        n1 = (-(b[1] - a[1]) / l1, (b[0] - a[0]) / l1); n2 = (-(c[1] - b[1]) / l2, (c[0] - b[0]) / l2)  # normales hacia adentro
+        m = (n1[0] + n2[0], n1[1] + n2[1]); k = m[0] * n1[0] + m[1] * n1[1]
+        if k < 0.3: return None  # esquina muy aguda
+        out.append((b[0] + m[0] * d / k, b[1] + m[1] * d / k))
+    a2 = sum(out[i][0] * out[(i + 1) % n][1] - out[(i + 1) % n][0] * out[i][1] for i in range(n)) / 2
+    return out if a2 > 1.0 else None
 def triangular(poly):  # recorte de orejas (CCW, sin repetir el último punto)
     idx = list(range(len(poly))); tris = []
     def cruz(a, b, c): return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
@@ -132,10 +143,21 @@ for bi, b in enumerate(B):
         F[mat].append(((i1, t1), (i2, t2), (i3, t3))); F[mat].append(((i1, t1), (i3, t3), (i4, t4)))
     poly = limpiar(q[:-1])
     if len(poly) < 3: continue
-    ids = [v(p[0], p[1], z1) for p in poly]; tids = [vt(p[0] / 8.0, p[1] / 8.0) for p in poly]
-    for (x, y, z) in triangular(poly):
+    if dos_aguas(q, h, bi, mat): zt, techo = z1, poly  # bajo la lámina: losa plana al ras
+    else:  # CUBIERTA CON PRETIL: offset de 35 cm hacia adentro y la losa 90 cm más abajo (como una cubierta real)
+        ins = adentro(poly, 0.35)
+        if ins:
+            zt, techo = z1 - 0.9, ins
+            for i in range(len(poly)):  # remate del pretil (anillo) y cara interior
+                a, b, ai, bi2 = poly[i], poly[(i + 1) % len(poly)], ins[i], ins[(i + 1) % len(ins)]
+                quad(mat, (a[0], a[1], z1), (b[0], b[1], z1), (bi2[0], bi2[1], z1), (ai[0], ai[1], z1))
+                L = math.hypot(b[0] - a[0], b[1] - a[1])
+                quad(mat, (ai[0], ai[1], z1), (bi2[0], bi2[1], z1), (bi2[0], bi2[1], zt), (ai[0], ai[1], zt), ((0, h / 12), (L / 12.4, h / 12), (L / 12.4, (h - 0.9) / 12), (0, (h - 0.9) / 12)))
+        else: zt, techo = z1, poly
+    ids = [v(p[0], p[1], zt) for p in techo]; tids = [vt(p[0] / 8.0, p[1] / 8.0) for p in techo]
+    for (x, y, z) in triangular(techo):
         F['techo'].append(((ids[x], tids[x]), (ids[y], tids[y]), (ids[z], tids[z])))
-    dos_aguas(q, h, bi, mat); balcones(q, h, bi)
+    balcones(q, h, bi)
     n += 1
 with open(os.path.join(OUT, 'edificios.obj'), 'w') as f:
     f.write('# REN3D - edificios alrededor del humedal El Burro\n')
