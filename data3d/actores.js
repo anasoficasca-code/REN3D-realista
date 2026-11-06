@@ -58,39 +58,56 @@ export async function iniciarActores({ THREE, T3, lw, OX = 0, OZ = 0, Y0 = 2.0 }
       const max = Math.max(1, ...Object.values(grado)), cs = centro(P.map(centro));
       E.nodos.forEach((n, i) => {
         const pol = P[Math.floor(rnd() * P.length)], q = pol.length > 12 || P.length < 6 ? puntoEn(pol) : centro(pol), g = grado[n.id] || 0;
-        const o = { ...n, E: E.id, g, x: q[0], z: q[1], y: Y0 + (ALTO[n.cl] || 24) + rnd() * 8, r: 1.6 + 7 * Math.sqrt(g / max) };
+        const humano = n.cl === 'Rol previo' || n.cl === 'Rol humano propuesto';
+        // los humanos caminan por el lugar de su estrategia (como los animales de la red biótica); el entorno y los organismos quedan fijos
+        const o = { ...n, E: E.id, g, x: q[0], z: q[1], y: humano ? Y0 : Y0 + (ALTO[n.cl] || 24) + rnd() * 8, r: humano ? 2.2 + 3.2 * Math.sqrt(g / max) : 1.6 + 7 * Math.sqrt(g / max), humano, P, obj: null, pausa: rnd() * 6, v: 1.1 + rnd() * 0.6, rot: rnd() * 6.28 };
         NOD.push(o); porId.set(E.id + '|' + n.id, o);
       });
       for (const r of E.rel) { const a = porId.get(E.id + '|' + r.o), b = porId.get(E.id + '|' + r.d); if (a && b) REL.push({ a, b, tag: r.tag, rel: r.rel }); }
       const d = document.createElement('div'); d.className = 'at-et'; d.style.setProperty('--c', COLE[E.id]); d.textContent = E.id + ' · ' + E.n; d.style.display = 'none'; document.body.appendChild(d);
       ET.push({ d, p: new THREE.Vector3(cs[0], Y0 + 80, cs[1]) });
     }
-    // nodos: una malla instanciada por clase
-    const esfera = new THREE.SphereGeometry(1, 12, 8), o3 = new THREE.Object3D();
+    // nodos: esferas fijas (entorno, organismos, recursos) y figuras que caminan (humanos), una malla por clase
+    const esfera = new THREE.SphereGeometry(1, 12, 8), figura = new THREE.CapsuleGeometry(0.3, 1.1, 3, 8).translate(0, 0.85, 0), o3 = new THREE.Object3D(), MALLAS = [];
     for (const [cl, col] of Object.entries(CLASE)) {
       const L = NOD.filter(n => n.cl === cl); if (!L.length) continue;
-      const c = new THREE.Color(col), m = new THREE.InstancedMesh(esfera, new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5) }), L.length);
-      L.forEach((n, i) => { o3.position.set(n.x, n.y, n.z); o3.scale.setScalar(n.r); o3.updateMatrix(); m.setMatrixAt(i, o3.matrix); }); m.frustumCulled = false; grupo.add(m);
+      const c = new THREE.Color(col), hum = L[0].humano, m = new THREE.InstancedMesh(hum ? figura : esfera, new THREE.MeshLambertMaterial({ color: c, emissive: c.clone().multiplyScalar(0.5) }), L.length);
+      L.forEach((n, i) => { o3.position.set(n.x, n.y, n.z); o3.rotation.set(0, n.rot, 0); o3.scale.setScalar(n.r); o3.updateMatrix(); m.setMatrixAt(i, o3.matrix); }); m.frustumCulled = false; if (hum) m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); grupo.add(m);
+      MALLAS.push({ m, L, hum });
     }
-    // relaciones: arcos con el color de la etiqueta
+    // relaciones: arcos con el color de la etiqueta; se recalculan en cada cuadro porque los humanos se mueven
     const SEG = 10, pos = new Float32Array(REL.length * SEG * 6), colA = new Float32Array(REL.length * SEG * 6);
-    REL.forEach((r, k) => { const c = new THREE.Color(TAGC[r.tag] || '#e2e8f0'), d = Math.hypot(r.b.x - r.a.x, r.b.z - r.a.z), h = Math.min(60, 4 + d * 0.25);
-      for (let s = 0; s < SEG; s++) { const u0 = s / SEG, u1 = (s + 1) / SEG, o = (k * SEG + s) * 6; const p = (u) => [r.a.x + (r.b.x - r.a.x) * u, r.a.y + (r.b.y - r.a.y) * u + Math.sin(Math.PI * u) * h, r.a.z + (r.b.z - r.a.z) * u]; pos.set([...p(u0), ...p(u1)], o); colA.set([c.r, c.g, c.b, c.r, c.g, c.b], o); } r.h = h; });
-    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(pos, 3)); lg.setAttribute('color', new THREE.BufferAttribute(colA, 3));
+    const ancla = (n) => n.humano ? n.y + n.r * 2.1 : n.y;
+    const arcos = () => REL.forEach((r, k) => { const d = Math.hypot(r.b.x - r.a.x, r.b.z - r.a.z), h = r.h = Math.min(60, 4 + d * 0.25), ya = ancla(r.a), yb = ancla(r.b);
+      for (let s = 0; s < SEG; s++) { const u0 = s / SEG, u1 = (s + 1) / SEG, o = (k * SEG + s) * 6; pos[o] = r.a.x + (r.b.x - r.a.x) * u0; pos[o + 1] = ya + (yb - ya) * u0 + Math.sin(Math.PI * u0) * h; pos[o + 2] = r.a.z + (r.b.z - r.a.z) * u0; pos[o + 3] = r.a.x + (r.b.x - r.a.x) * u1; pos[o + 4] = ya + (yb - ya) * u1 + Math.sin(Math.PI * u1) * h; pos[o + 5] = r.a.z + (r.b.z - r.a.z) * u1; } });
+    REL.forEach((r, k) => { const c = new THREE.Color(TAGC[r.tag] || '#e2e8f0'); for (let s = 0; s < SEG; s++) colA.set([c.r, c.g, c.b, c.r, c.g, c.b], (k * SEG + s) * 6); });
+    arcos();
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage)); lg.setAttribute('color', new THREE.BufferAttribute(colA, 3));
     const lineas = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false })); lineas.frustumCulled = false; lineas.renderOrder = 8; grupo.add(lineas);
     const pp = new Float32Array(REL.length * 3), pcol = new Float32Array(REL.length * 3), pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pg.setAttribute('color', new THREE.BufferAttribute(pcol, 3));
     REL.forEach((r, k) => { const c = new THREE.Color(TAGC[r.tag] || '#e2e8f0'); pcol.set([c.r, c.g, c.b], k * 3); });
     const pulsos = new THREE.Points(pg, new THREE.PointsMaterial({ size: 3, sizeAttenuation: false, vertexColors: true, depthWrite: false })); pulsos.frustumCulled = false; grupo.add(pulsos);
-    // nodo bajo el puntero
+    // caminar: de un punto a otro dentro de los lugares de su estrategia, con pausas (como los animales)
+    const mover = (n, dt) => {
+      if (n.pausa > 0) { n.pausa -= dt; return; }
+      if (!n.obj) { const pol = n.P[Math.floor(Math.random() * n.P.length)]; n.obj = pol.length > 12 || n.P.length < 6 ? puntoEn(pol) : centro(pol); if (Math.hypot(n.obj[0] - n.x, n.obj[1] - n.z) > 260) n.obj = [n.x + (Math.random() - 0.5) * 80, n.z + (Math.random() - 0.5) * 80]; }
+      const dx = n.obj[0] - n.x, dz = n.obj[1] - n.z, d = Math.hypot(dx, dz);
+      if (d < 1) { n.obj = null; n.pausa = 2 + Math.random() * 10; return; }
+      const s = Math.min(d, n.v * dt * 8); n.x += dx / d * s; n.z += dz / d * s; n.rot = Math.atan2(dx, dz);
+    };    // nodo bajo el puntero
     const tip = document.createElement('div'); tip.id = 'at-tip'; document.body.appendChild(tip);
     const cvs = T3.renderer.domElement, v = new THREE.Vector3();
-    const cercano = (ev) => { const rc = cvs.getBoundingClientRect(); let best = null, bd = 12; for (const n of NOD) { v.set(n.x, n.y, n.z).project(T3.camera); if (v.z > 1) continue; const x = (v.x + 1) / 2 * rc.width + rc.left, y = (1 - v.y) / 2 * rc.height + rc.top, d = Math.hypot(x - ev.clientX, y - ev.clientY); if (d < bd) { bd = d; best = n; } } return best; };
+    const cercano = (ev) => { const rc = cvs.getBoundingClientRect(); let best = null, bd = 12; for (const n of NOD) { v.set(n.x, n.humano ? n.y + n.r : n.y, n.z).project(T3.camera); if (v.z > 1) continue; const x = (v.x + 1) / 2 * rc.width + rc.left, y = (1 - v.y) / 2 * rc.height + rc.top, d = Math.hypot(x - ev.clientX, y - ev.clientY); if (d < bd) { bd = d; best = n; } } return best; };
     cvs.addEventListener('pointermove', (ev) => { if (!on) return; const n = cercano(ev); if (!n) { tip.style.display = 'none'; return; } tip.style.display = 'block'; tip.style.left = (ev.clientX + 14) + 'px'; tip.style.top = (ev.clientY + 12) + 'px'; tip.innerHTML = `<b>${n.n}</b><small>${n.E} · ${n.cl} · ${n.proc}</small><small>${n.g} relaciones · doble clic: ver su red</small>`; });
     cvs.addEventListener('dblclick', (ev) => { if (!on) return; const n = cercano(ev); if (n) abrir(n.E); });
+    let ult = performance.now();
     const bucle = () => {
+      const ahora = performance.now(), dt = Math.min(0.1, (ahora - ult) / 1000); ult = ahora;
       if (on) {
-        const t = performance.now() / 1000;
-        REL.forEach((r, k) => { const u = (t * 0.3 + k * 0.137) % 1; pp[k * 3] = r.a.x + (r.b.x - r.a.x) * u; pp[k * 3 + 1] = r.a.y + (r.b.y - r.a.y) * u + Math.sin(Math.PI * u) * r.h; pp[k * 3 + 2] = r.a.z + (r.b.z - r.a.z) * u; });
+        const t = ahora / 1000;
+        for (const M of MALLAS) if (M.hum) { M.L.forEach((n, i) => { mover(n, dt); o3.position.set(n.x, n.y, n.z); o3.rotation.set(0, n.rot, 0); o3.scale.setScalar(n.r); o3.updateMatrix(); M.m.setMatrixAt(i, o3.matrix); }); M.m.instanceMatrix.needsUpdate = true; }
+        arcos(); lg.attributes.position.needsUpdate = true;
+        REL.forEach((r, k) => { const u = (t * 0.3 + k * 0.137) % 1, ya = ancla(r.a), yb = ancla(r.b); pp[k * 3] = r.a.x + (r.b.x - r.a.x) * u; pp[k * 3 + 1] = ya + (yb - ya) * u + Math.sin(Math.PI * u) * r.h; pp[k * 3 + 2] = r.a.z + (r.b.z - r.a.z) * u; });
         pg.attributes.position.needsUpdate = true;
         for (const x of ET) { v.copy(x.p).project(T3.camera); const fuera = v.z > 1 || Math.abs(v.x) > 1.05 || Math.abs(v.y) > 1.05; x.d.style.display = fuera ? 'none' : 'block'; if (!fuera) { x.d.style.left = ((v.x + 1) / 2 * innerWidth) + 'px'; x.d.style.top = ((1 - v.y) / 2 * innerHeight) + 'px'; } }
       }
