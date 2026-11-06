@@ -5,12 +5,12 @@
    E1 Bavaria Común la dibuja data3d/bavaria_plan.js. E2, E6, E7 y E9 no tienen una ubicación única: desde la leyenda se abre su
    red de actores. Las capas sobre techos (cubiertas, viviendas) se pintan a la altura de cada edificio; las demás a ras del suelo. */
 export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
-  const D = await (await fetch('data3d/estrategias.json?v=3')).json();
+  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=3');
   const esc = D.escala || 0.5, grupo = new THREE.Group(); grupo.name = 'estrategias'; T3.scene.add(grupo);
   const CAPA = {};
   const W2 = (flat) => { const n = flat.length / 2, W = []; for (let k = 0; k < n; k++) W.push(lw(flat[k * 2] * esc, flat[k * 2 + 1] * esc)); return W; };
-  for (const e of D.estrategias) {
-    const gr = new THREE.Group(); gr.visible = false; grupo.add(gr); // al iniciar, todas apagadas
+  // la geometría de cada estrategia (miles de techos triangulados) se arma SOLO la primera vez que se prende: la carga inicial no la paga
+  const armar = (e, gr) => {
     for (const c of e.capas) {
       const P = [], I = [], L = []; let vc = 0;
       const anillo = (flat, y) => {
@@ -29,7 +29,10 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
       const borde = new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: col.clone().multiplyScalar(techo ? 0.75 : 1), transparent: true, opacity: 0.95, depthWrite: false }));
       borde.renderOrder = 5; borde.frustumCulled = false; gr.add(relleno, borde);
     }
-    CAPA[e.id] = { gr, e };
+  };
+  for (const e of D.estrategias) {
+    const gr = new THREE.Group(); gr.visible = false; grupo.add(gr); // al iniciar, todas apagadas
+    CAPA[e.id] = { gr, e, lista: false };
   }
 
   // etiquetas en los sitios grandes y pocos (Corabastos, distrito, humedales, lotes baldíos); las huertas en techos van en la leyenda
@@ -71,7 +74,7 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
   });
   return {
     lista,
-    ver: (id, on) => { if (CAPA[id]) CAPA[id].gr.visible = on; },
+    ver: (id, on) => { const k = CAPA[id]; if (!k) return; if (on && !k.lista) { armar(k.e, k.gr); k.lista = true; } k.gr.visible = on; },
     // sitios de huerta en el suelo (lotes baldíos) para las colmenas y lombrices de la red biótica
     sitios: () => { const e = D.estrategias.find(x => x.id === 'E8'); const c = e && e.capas.find(x => /baldío/i.test(x.n)); return c ? c.lotes.map(l => ({ id: 'E8', n: 'Huerta en lote baldío', poly: W2(l) })) : []; }
   };

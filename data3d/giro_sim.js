@@ -88,7 +88,7 @@ export async function iniciarSimulacion(cfg = {}) {
   // dos modos: sobre el giro renderizado (2D, window.GIRO) o dentro de la maqueta 3D (cfg.T3: calles pintadas en el suelo, agentes 3D)
   const M3 = !!cfg.T3, T3 = cfg.T3, GIRO = M3 ? null : window.GIRO;
   const OX = 2095.67, OZ = -109.06; // marco del giro (X este, Y sur, desde El Burro) -> mundo de la maqueta (x, z)
-  const D = await (await fetch('data3d/giro_sim.json')).json();
+  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/giro_sim.json');
   const $ = (id) => document.getElementById(id);
   const st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
   const cv = document.createElement('canvas'); cv.id = 'gs-cv'; const g = cv.getContext('2d');

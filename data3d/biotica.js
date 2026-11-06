@@ -71,8 +71,8 @@ const R_RED = 220, R_RAPAZ = 420, R_ARBOL = 90, CERCA = 18;
 
 export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = false, huertas = null }) {
   const [{ LineSegments2 }, { LineSegmentsGeometry }, { LineMaterial }] = await Promise.all([import('three/addons/lines/LineSegments2.js'), import('three/addons/lines/LineSegmentsGeometry.js'), import('three/addons/lines/LineMaterial.js')]);
-  const [D, B, TR, PQ] = await Promise.all(['data3d/giro_sim.json', 'data3d/biotica.json?v=2', 'data3d/trees.json', 'data3d/parques.json'].map(u => fetch(u).then(r => r.json())));
-  const [BV, BA, CO] = await Promise.all(['data3d/bavaria.json?v=2', 'data3d/bavaria_arboles.json?v=2', 'data3d/corabastos.json'].map(u => fetch(u).then(r => r.json()).catch(() => null))); // Bavaria y Corabastos: también son hábitat
+  const [D, B, TR, PQ] = await Promise.all(['data3d/giro_sim.json', 'data3d/biotica.json?v=2', 'data3d/trees.json', 'data3d/parques.json'].map(u => (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))(u)));
+  const [BV, BA, CO] = await Promise.all(['data3d/bavaria.json?v=2', 'data3d/bavaria_arboles.json?v=2', 'data3d/corabastos.json?v=3'].map(u => (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))(u).catch(() => null))); // Bavaria y Corabastos: también son hábitat
   const rnd = Math.random, gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); };
   const TIPOS = B.tipos, COLT = TIPOS.map(t => new THREE.Color(t.c));
   const GY = Y0; // suelo y lámina de agua en el marco de la maqueta (el mismo de las personas de la simulación)
@@ -759,11 +759,11 @@ export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = 
     cancelAnimationFrame(animRed); animRed = requestAnimationFrame(cuadro);
   }
 
-  /* ---------- bucle ---------- */  let ult = performance.now(), tUI = 0, tPot = 0;
+  /* ---------- bucle ---------- */  let ult = performance.now(), tUI = 0, tPot = 0, nCuadro = 0;
   function cuadro() {
     const ahora = performance.now(), dt = Math.min(0.1, (ahora - ult) / 1000); ult = ahora;
     for (const a of AG) { if (a.huye && (a.huye.t -= dt) <= 0) a.huye = null; MOV[ESP[a.e].mov](a, dt); }
-    actualizarRed(dt); instancias(dt); dibujarRed(ahora / 1000);
+    actualizarRed(dt); instancias(dt); if ((nCuadro = (nCuadro + 1) % 2) === 0) dibujarRed(ahora / 1000); // líneas y marcas cada dos cuadros: alivia la subida a la tarjeta gráfica
     if ((tUI -= dt) <= 0) { tUI = 0.5; TIPOS.forEach(t => { const el = document.getElementById('bt-c-' + t.id); if (el) el.textContent = CUENTA[t.id]; }); if (ESTADO.sel) pintarFicha(); }
     if (ESTADO.sel && (tPot -= dt) <= 0) { tPot = 1.5; ESTADO.pot = redPotencial(ESTADO.sel); }
     requestAnimationFrame(cuadro);

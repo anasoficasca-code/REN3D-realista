@@ -33,7 +33,7 @@ export async function iniciarActores({ THREE, T3, lw, OX = 0, OZ = 0, Y0 = 2.0 }
 
   /* ---------- la capa en el territorio ---------- */
   async function construir() {
-    const [A, ES, BV] = await Promise.all(['data3d/actores.json?v=2', 'data3d/estrategias.json?v=3', 'data3d/bavaria.json?v=2'].map(u => fetch(u).then(r => r.json()).catch(() => null)));
+    const [A, ES, BV] = await Promise.all(['data3d/actores.json?v=2', 'data3d/estrategias.json?v=3', 'data3d/bavaria.json?v=2'].map(u => (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))(u).catch(() => null)));
     if (!A || !ES) return null;
     const esc = ES.escala || 0.5, ring = (flat) => { const W = []; const n = (flat.length - (flat.length % 2)) / 2; for (let k = 0; k < n; k++) W.push(lw(flat[k * 2] * esc, flat[k * 2 + 1] * esc)); return W; };
     const centro = (P) => { let x = 0, z = 0; for (const p of P) { x += p[0]; z += p[1]; } return [x / P.length, z / P.length]; };

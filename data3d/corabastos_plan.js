@@ -41,7 +41,7 @@ const TEXTO = {
 };
 
 export async function iniciarPlanCorabastos({ THREE, T3, lw, OX, OZ, Y0 = 2.0 }) {
-  const [C, G, A] = await Promise.all(['data3d/corabastos.json?v=3', 'data3d/giro_sim.json', 'data3d/actores.json?v=2'].map(u => fetch(u).then(r => r.json()).catch(() => null)));
+  const [C, G, A] = await Promise.all(['data3d/corabastos.json?v=3', 'data3d/giro_sim.json', 'data3d/actores.json?v=2'].map(u => (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))(u).catch(() => null)));
   if (!C) return null;
   const ficha = A && A.doc && A.doc.fichas && A.doc.fichas.E3;
   const W = (p) => lw(p[0], p[1]);

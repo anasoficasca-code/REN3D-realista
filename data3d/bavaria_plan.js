@@ -46,8 +46,8 @@ const TEXTO = {
 };
 
 export async function iniciarPlanBavaria({ THREE, T3, lw, OX, OZ, Y0 = 2.0 }) {
-  const [D, G] = await Promise.all(['data3d/bavaria.json?v=2', 'data3d/giro_sim.json'].map(u => fetch(u).then(r => r.json())));
-  const ARB = await fetch('data3d/bavaria_arboles.json?v=2').then(r => r.json()).then(j => j.arboles).catch(() => []);
+  const [D, G] = await Promise.all(['data3d/bavaria.json?v=2', 'data3d/giro_sim.json'].map(u => (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))(u)));
+  const ARB = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/bavaria_arboles.json?v=2').then(j => j.arboles).catch(() => []);
   const W = (p) => lw(p[0], p[1]);
   const sitio = D.sitio.map(W), dentro = (P, x, z) => { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > z) !== (P[j][1] > z) && x < (P[j][0] - P[i][0]) * (z - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; };
   const centro = (P) => { let x = 0, z = 0; for (const p of P) { x += p[0]; z += p[1]; } return [x / P.length, z / P.length]; };
