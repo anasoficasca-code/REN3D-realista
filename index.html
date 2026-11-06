@@ -1339,7 +1339,7 @@ async function initTodoReal() {
       try {
         // árboles de la antigua fábrica de Bavaria (masas de follaje de la imagen satelital): mismos modelos reales que el resto del territorio
         let TT = T;
-        try { const [BA, BV] = await Promise.all([fetch('data3d/bavaria_arboles.json?v=1').then(r => r.json()), pBav]); if (BA && BA.arboles) { const lib = (BV && BV.libres) || []; TT = { ...T, t: T.t.concat(BA.arboles.filter(a => !lib.some(z => enPoli(z, a[0], a[1]))).map(a => [a[0], a[1], a[2], 0])) }; } } catch (e) { console.warn('árboles de Bavaria:', e); }
+        try { const [BA, BV] = await Promise.all([fetch('data3d/bavaria_arboles.json?v=2').then(r => r.json()), pBav]); if (BA && BA.arboles) { const lib = (BV && BV.libres) || []; TT = { ...T, t: T.t.concat(BA.arboles.filter(a => !lib.some(z => enPoli(z, a[0], a[1]))).map(a => [a[0], a[1], a[2], 0])) }; } } catch (e) { console.warn('árboles de Bavaria:', e); }
         T3.trees = await T3.R.buildTrees(T3, ZON ? { ...TT, t: TT.t.filter(t => enZona(t[0], t[1], 100)) } : TT, W, lw, T3.env);
         T3.counts.t = T.t.length;
         say('🌳 Árboles reales 3D cargados', 3000);
@@ -3071,7 +3071,8 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
       return m.iniciarSimulacion({ T3, say, sinFauna: FAUNA_RED, sinMalla: ['abeja'], estrategias: lista.length ? lista : null, verEstrategia: (id, on) => id === 'E1' ? PLAN && PLAN.ver(on) : EST && EST.ver(id, on) });
     })
     .then(() => import('./data3d/cielo.js?v=3')).then(m => { T3.cielo = m.iniciarCielo({ THREE: T3.THREE, T3, luzMalla }); }) // cielo y luz de 24 horas con el reloj de la simulación
-    .then(() => import('./data3d/biotica.js?v=8')).then(m => m.iniciarBiotica({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0, movil: MOVIL, huertas: EST ? EST.sitios(['E2']) : null }))
+    .then(() => import('./data3d/biotica.js?v=9')).then(m => m.iniciarBiotica({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0, movil: MOVIL, huertas: EST ? EST.sitios(['E2']) : null }))
+    .then(() => import('./data3d/actores.js?v=1')).then(m => m.iniciarActores({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 })).then(a => { T3.actores = a; }) // capa de redes de actores (9 estrategias del Excel)
     .catch(e => console.warn('simulación Kennedy:', e));
 } else import('./data3d/simulador.js?v=6').then(m => {
   SIM = m.crearSimulador({

@@ -48,11 +48,11 @@ while y < y1:
     y += 3.0
 random.shuffle(cand); arb = []; celda = {}
 for (x, y) in cand:  # raleo: un árbol cada ~5 m
-    k = (int(x // 5), int(y // 5)); ok = True
+    k = (int(x // 9), int(y // 9)); ok = True
     for i in (-1, 0, 1):
         for j in (-1, 0, 1):
             for (a, b) in celda.get((k[0] + i, k[1] + j), []):
-                if (a - x) ** 2 + (b - y) ** 2 < 4.8 ** 2: ok = False
-    if ok: celda.setdefault(k, []).append((x, y)); arb.append([round(x, 1), round(y, 1), round(random.uniform(9, 22), 1), round(random.uniform(2.6, 4.6), 1)])
+                if (a - x) ** 2 + (b - y) ** 2 < 9.0 ** 2: ok = False  # un árbol cada ~9 m: bosque legible, no una masa continua
+    if ok: celda.setdefault(k, []).append((x, y)); arb.append([round(x, 1), round(y, 1), round(random.uniform(11, 16), 1), round(random.uniform(3.5, 5.5), 1)])  # eucaliptos y urapanes adultos
 json.dump({'fuente': 'Esri World Imagery z19 (masas oscuras de follaje dentro del predio)', 'arboles': arb}, open(os.path.join(RAIZ, 'data3d', 'bavaria_arboles.json'), 'w'), separators=(',', ':'))
 print('candidatos', len(cand), 'árboles', len(arb))

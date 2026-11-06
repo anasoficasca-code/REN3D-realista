@@ -432,7 +432,7 @@ export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = 
   // marca de lejos: TRIÁNGULO que apunta hacia donde avanza el animal (ángulo en pantalla por animal, calculado en cada cuadro)
   const ma = new Float32Array(AG.length); mg.setAttribute('ang', new THREE.BufferAttribute(ma, 1).setUsage(THREE.DynamicDrawUsage));
   const marcas = new THREE.Points(mg, new THREE.ShaderMaterial({
-    uniforms: { uTam: { value: (movil ? 12 : 14) * Math.min(2, devicePixelRatio || 1) } }, transparent: true, depthWrite: false,
+    uniforms: { uTam: { value: (movil ? 8 : 9) * Math.min(2, devicePixelRatio || 1) } }, transparent: true, depthWrite: false,
     vertexShader: `attribute float ang; attribute vec4 color; uniform float uTam; varying vec4 vC; varying float vA;
       void main(){ vC = color; vA = ang; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_Position = projectionMatrix * mv; gl_PointSize = uTam; }`,
     fragmentShader: `varying vec4 vC; varying float vA;
