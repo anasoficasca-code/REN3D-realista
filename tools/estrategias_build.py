@@ -56,7 +56,7 @@ arbol = STRtree(geos)
 pr = [g.representative_point() for g in geos]
 for e in out.values():
     # huertas en cubiertas (E3) y en viviendas (E5): se pinta el TECHO de cada edificio que cae dentro del lote; si no tiene edificios, el lote en el suelo
-    e['n0'] = len(e['lotes']); techo = e['p'] in ('P3', 'P5'); suelo, techos = [], []
+    e['n0'] = len(e['lotes']); e['lotes0'] = e['lotes']; techo = e['p'] in ('P3', 'P5'); suelo, techos = [], []
     for l in e['lotes']:
         lote = Polygon([(l[k] / 2, l[k + 1] / 2) for k in range(0, len(l), 2)]); hay = False
         if techo and lote.is_valid:
@@ -81,9 +81,37 @@ GS = json.load(open(os.path.join(RAIZ, 'data3d', 'giro_sim.json'), encoding='utf
 LAT0, LON0 = 4.640683, -74.149778
 hum = [[xy(LON0 + x / MX, LAT0 - y / MY) for x, y in h['poly']] for h in GS['humedales']]
 G['E5'] = {'id': 'E5', 'n': NOM.get('E5', 'E5'), 'c': COLOR['E5'], 'capas': [{'n': 'Humedales El Burro, La Vaca y Techo', 'c': COLOR['E5'], 'lotes': [anillo(h) for h in hum], 'techos': []}], 'area': sum(Polygon(h).area for h in hum), 'n_lotes': len(hum)}
+# ---- estrategias sin lote propio: puntos reales de OpenStreetMap dentro de Kennedy (tools/cache/kennedy_puntos_osm.json) ----
+from shapely.geometry import Point as _P
+K = json.load(open(os.path.join(RAIZ, 'data3d', 'kennedy.json'), encoding='utf-8'))
+LIM = Polygon([xy(lo, la) for lo, la in K['limite']])
+OSMP = json.load(open(os.path.join(RAIZ, 'tools', 'cache', 'kennedy_puntos_osm.json')))
+def pts(filtro):
+    L = []
+    for e in OSMP:
+        t = e.get('tags', {}); c = e.get('center') or {'lat': e.get('lat'), 'lon': e.get('lon')}
+        if c.get('lat') is None or not filtro(t): continue
+        p = xy(c['lon'], c['lat'])
+        if LIM.contains(_P(p)): L.append([round(p[0] * 2), round(p[1] * 2)])
+    return L
+ALIM = {'convenience', 'supermarket', 'greengrocer', 'butcher', 'bakery', 'general', 'deli', 'dairy', 'food', 'farm', 'grocery'}
+OFICIO = {'hairdresser', 'beauty', 'tailor', 'clothes', 'hardware', 'shoes', 'copyshop', 'mobile_phone', 'furniture', 'car_repair', 'electronics', 'variety_store', 'laundry', 'dry_cleaning', 'bicycle', 'sewing', 'fabric'}
+CUIDADO = {'kindergarten', 'childcare', 'community_centre', 'social_facility', 'library', 'social_centre'}
+conj = [[round(sum(l[i] for i in range(0, len(l), 2)) / (len(l) / 2)), round(sum(l[i] for i in range(1, len(l), 2)) / (len(l) / 2))] for l in out['P3']['lotes0']] if 'lotes0' in out['P3'] else []
+EXTRA = {
+    'E2': [{'n': 'Tiendas de barrio, fruterías, panaderías y carnicerías (OSM)', 'c': '#38bdf8', 'puntos': pts(lambda t: t.get('shop') in ALIM), 'tam': 1}],
+    'E6': [{'n': 'Negocios en vivienda: peluquerías, sastrerías, talleres y oficios (OSM)', 'c': '#e879f9', 'puntos': pts(lambda t: t.get('shop') in OFICIO or 'craft' in t), 'tam': 1}],
+    'E7': [{'n': 'Plazas de mercado (OSM)', 'c': '#facc15', 'puntos': pts(lambda t: t.get('amenity') == 'marketplace'), 'tam': 2.4},
+           {'n': 'Conjuntos en altura (lotes del shapefile)', 'c': '#fde047', 'puntos': conj, 'tam': 0.9}],
+    'E9': [{'n': 'Jardines infantiles, salones comunales y centros de cuidado (OSM)', 'c': '#fb7185', 'puntos': pts(lambda t: t.get('amenity') in CUIDADO), 'tam': 1.4}],
+}
+COLOR.update({'E2': '#38bdf8', 'E6': '#e879f9', 'E7': '#facc15', 'E9': '#fb7185'})
+for k, capas in EXTRA.items():
+    n = sum(len(c['puntos']) for c in capas)
+    G[k] = {'id': k, 'n': NOM.get(k, k), 'c': COLOR[k], 'capas': [{'n': c['n'], 'c': c['c'], 'lotes': [], 'techos': [], 'puntos': c['puntos'], 'tam': c['tam']} for c in capas], 'area': 0, 'n_lotes': n, 'n_puntos': n}
 res = []
 for k in sorted(G, key=lambda x: int(x[1:])):
-    g = G[k]; T = [l for c in g['capas'] for l in c['lotes']] or [t[:-1] for c in g['capas'] for t in c['techos']]
+    g = G[k]; T = [l for c in g['capas'] for l in c['lotes']] or [t[:-1] for c in g['capas'] for t in c['techos']] or [p for c in g['capas'] for p in c.get('puntos', [])]
     xs = [l[i] for l in T for i in range(0, len(l), 2)]; ys = [l[i] for l in T for i in range(1, len(l), 2)]
     g['centro'] = [round(sum(xs) / len(xs) / 2), round(sum(ys) / len(ys) / 2)]; g['area'] = round(g['area']); res.append(g)
 json.dump({'fuente': 'Propuesta shp/lote.shp (PROPUESTA) + Corabastos y humedales; nombres del Excel de las 9 estrategias', 'escala': 0.5, 'nombres': NOM, 'estrategias': res},

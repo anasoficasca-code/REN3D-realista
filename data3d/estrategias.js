@@ -5,7 +5,7 @@
    E1 Bavaria Común la dibuja data3d/bavaria_plan.js. E2, E6, E7 y E9 no tienen una ubicación única: desde la leyenda se abre su
    red de actores. Las capas sobre techos (cubiertas, viviendas) se pintan a la altura de cada edificio; las demás a ras del suelo. */
 export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
-  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=3');
+  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=4');
   const esc = D.escala || 0.5, grupo = new THREE.Group(); grupo.name = 'estrategias'; T3.scene.add(grupo);
   const CAPA = {};
   const W2 = (flat) => { const n = flat.length / 2, W = []; for (let k = 0; k < n; k++) W.push(lw(flat[k * 2] * esc, flat[k * 2 + 1] * esc)); return W; };
@@ -19,6 +19,12 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
         const b = vc; for (const q of W) { P.push(q[0], y, q[1]); vc++; } for (const t of tri) I.push(b + t[0], b + t[1], b + t[2]);
         for (let k = 0; k < n; k++) { const a = W[k], d = W[(k + 1) % n]; L.push(a[0], y + 0.05, a[1], d[0], y + 0.05, d[1]); }
       };
+      if ((c.puntos || []).length) { // estrategias de puntos (tiendas, negocios, plazas, centros de cuidado): poste con esfera de su color
+        const col = new THREE.Color(c.c), tam = c.tam || 1, poste = new THREE.CylinderGeometry(0.35 * tam, 0.35 * tam, 12 * tam, 6).translate(0, 6 * tam, 0), cabeza = new THREE.SphereGeometry(2.4 * tam, 12, 8).translate(0, 12 * tam + 1.6 * tam, 0), o3 = new THREE.Object3D();
+        const mP = new THREE.InstancedMesh(poste, new THREE.MeshBasicMaterial({ color: col.clone().multiplyScalar(0.7) }), c.puntos.length), mC = new THREE.InstancedMesh(cabeza, new THREE.MeshLambertMaterial({ color: col, emissive: col.clone().multiplyScalar(0.55) }), c.puntos.length);
+        c.puntos.forEach((q, i) => { const w = lw(q[0] * esc, q[1] * esc); o3.position.set(w[0], Y0, w[1]); o3.updateMatrix(); mP.setMatrixAt(i, o3.matrix); mC.setMatrixAt(i, o3.matrix); });
+        mP.frustumCulled = mC.frustumCulled = false; gr.add(mP, mC);
+      }
       for (const l of c.lotes) anillo(l, Y0 + 0.35);                                   // a ras del suelo
       for (const t of c.techos || []) anillo(t.slice(0, -1), t[t.length - 1] / 10 + 0.3); // sobre el techo de cada edificio del lote
       const col = new THREE.Color(c.c), techo = (c.techos || []).length > 0;
@@ -65,16 +71,79 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
     requestAnimationFrame(bucle);
   };
   requestAnimationFrame(bucle);
+  /* ---------- conexiones entre estrategias (documento maestro, sección 8) ----------
+     Arcos entre los lugares de dos estrategias relacionadas; se ven cuando las dos están prendidas. Pulsos de origen a destino
+     (en las dos direcciones si la relación es ↔) y una etiqueta con el mecanismo que se investigará. */
+  const PREN = {};
+  const [AC, BVd] = await Promise.all(['data3d/actores.json?v=2', 'data3d/bavaria.json?v=2'].map(u => (window.cargarJSON || ((x) => fetch(x).then(r => r.json())))(u).catch(() => null)));
+  const cruces = (AC && AC.doc && AC.doc.cruces) || [];
+  const cent = (W) => { let x = 0, z = 0; for (const q of W) { x += q[0]; z += q[1]; } return [x / W.length, z / W.length]; };
+  const REP = {}; // puntos representativos de cada estrategia (en el mundo)
+  for (const e of D.estrategias) {
+    const L = [];
+    for (const c of e.capas) {
+      for (const l of c.lotes) L.push(cent(W2(l)));
+      const T = c.techos || []; for (let i = 0; i < T.length; i += Math.max(1, Math.floor(T.length / 60))) L.push(cent(W2(T[i].slice(0, -1))));
+      for (const q of c.puntos || []) L.push(lw(q[0] * esc, q[1] * esc));
+    }
+    REP[e.id] = L;
+  }
+  if (BVd && BVd.sitio) REP.E1 = [cent(BVd.sitio.map(p => lw(p[0], p[1])))];
+  const lado = (s) => [...s.matchAll(/E(\d)(?:\s*[–-]\s*E(\d))?/g)].flatMap(m => m[2] ? Array.from({ length: +m[2] - +m[1] + 1 }, (_, k) => 'E' + (+m[1] + k)) : ['E' + m[1]]);
+  let sem = 11; const rnd = () => ((sem = (sem * 16807) % 2147483647) / 2147483647);
+  const COLE = { E1: '#ef4444', ...Object.fromEntries(D.estrategias.map(e => [e.id, e.c])) };
+  const PARES = [];
+  for (const c of cruces) {
+    let primera = true; // una sola etiqueta por conexión del documento (E9 ↔ E1–E8 son siete pares)
+    const bi = c.par.includes('↔'), [si, sd] = c.par.split(/→|↔/), O = lado(si || ''), Dd = lado(sd || '');
+    for (const o of O) for (const d of Dd) {
+      if (o === d || !REP[o] || !REP[d] || !REP[o].length || !REP[d].length) continue;
+      const [A, B, inv] = REP[o].length >= REP[d].length ? [REP[o], REP[d], false] : [REP[d], REP[o], true];
+      const n = Math.min(12, A.length), muestra = []; for (let i = 0; i < n; i++) muestra.push(A[Math.floor(rnd() * A.length)]);
+      const arcos = muestra.map(a => { let b = B[0], bd = 1e18; for (const q of B) { const dd = (q[0] - a[0]) ** 2 + (q[1] - a[1]) ** 2; if (dd < bd) { bd = dd; b = q; } } return inv ? [b, a] : [a, b]; }); // [origen, destino]
+      const gr = new THREE.Group(); gr.visible = false; grupo.add(gr);
+      const col = new THREE.Color(COLE[o] || '#e2e8f0'), col2 = new THREE.Color(COLE[d] || '#e2e8f0'), SEG = 24, pos = [], cols = [], curvas = [];
+      for (const [a, b] of arcos) {
+        const dist = Math.hypot(b[0] - a[0], b[1] - a[1]), h = Math.max(30, Math.min(260, dist * 0.22)), P = [];
+        for (let s = 0; s <= SEG; s++) { const u = s / SEG; P.push(new THREE.Vector3(a[0] + (b[0] - a[0]) * u, Y0 + 14 + Math.sin(Math.PI * u) * h, a[1] + (b[1] - a[1]) * u)); }
+        for (let s = 0; s < SEG; s++) { pos.push(P[s].x, P[s].y, P[s].z, P[s + 1].x, P[s + 1].y, P[s + 1].z); const c1 = col.clone().lerp(col2, s / SEG), c2 = col.clone().lerp(col2, (s + 1) / SEG); cols.push(c1.r, c1.g, c1.b, c2.r, c2.g, c2.b); }
+        curvas.push(P);
+      }
+      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+      const l = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85, depthWrite: false })); l.renderOrder = 9; l.frustumCulled = false; gr.add(l);
+      const pp = new Float32Array(curvas.length * 2 * 3), pc = new Float32Array(curvas.length * 2 * 3), pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp, 3)); pg.setAttribute('color', new THREE.BufferAttribute(pc, 3));
+      const pulsos = new THREE.Points(pg, new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true, depthWrite: false })); pulsos.frustumCulled = false; gr.add(pulsos);
+      const top = curvas[0][Math.floor(SEG / 2)], et = primera ? document.createElement('div') : null; primera = false;
+      if (et) { et.className = 'es-et'; et.style.setProperty('--c', COLE[o] || '#e2e8f0');
+      et.innerHTML = `<b>${c.par}</b>${c.mecanismo.length > 46 ? c.mecanismo.slice(0, 44) + '…' : c.mecanismo}`; et.title = c.mecanismo + ' · No puede suponerse: ' + c.no_suponer; et.style.display = 'none'; et.style.whiteSpace = 'normal'; et.style.maxWidth = '210px'; et.style.fontSize = '10px'; et.style.fontWeight = '600'; document.body.appendChild(et); }
+      PARES.push({ o, d, bi, gr, curvas, pp, pc, pg, col, col2, et, top });
+    }
+  }
+  const conexiones = () => { for (const p of PARES) { const v2 = !!(PREN[p.o] && PREN[p.d]); p.gr.visible = v2; if (!v2 && p.et) p.et.style.display = 'none'; } };
+  const vc = new THREE.Vector3();
+  const bucleC = () => {
+    const t = performance.now() / 1000;
+    for (const p of PARES) {
+      if (!p.gr.visible) continue;
+      p.curvas.forEach((P, i) => { for (let j = 0; j < 2; j++) { let u = (t * 0.22 + i * 0.173 + j * 0.5) % 1; if (p.bi && j === 1) u = 1 - u; const k = Math.min(P.length - 1, Math.floor(u * (P.length - 1))), q = P[k], o = (i * 2 + j) * 3, c = p.col.clone().lerp(p.col2, u); p.pp[o] = q.x; p.pp[o + 1] = q.y; p.pp[o + 2] = q.z; p.pc[o] = c.r; p.pc[o + 1] = c.g; p.pc[o + 2] = c.b; } });
+      p.pg.attributes.position.needsUpdate = true; p.pg.attributes.color.needsUpdate = true;
+      if (!p.et) continue;
+      vc.copy(p.top).project(T3.camera); const fuera = vc.z > 1 || Math.abs(vc.x) > 1.05 || Math.abs(vc.y) > 1.05; p.et.style.display = fuera ? 'none' : 'block'; if (!fuera) { p.et.style.left = ((vc.x + 1) / 2 * innerWidth).toFixed(1) + 'px'; p.et.style.top = ((1 - vc.y) / 2 * innerHeight).toFixed(1) + 'px'; }
+    }
+    requestAnimationFrame(bucleC);
+  };
+  requestAnimationFrame(bucleC);
   // las 9 estrategias del Excel, con o sin ubicación en el mapa
   const NOM = D.nombres || {}, COL = { E2: '#38bdf8', E6: '#e879f9', E7: '#facc15', E9: '#fb7185' };
   const lista = Object.keys(NOM).filter(k => k !== 'E1').sort((a, b) => +a.slice(1) - +b.slice(1)).map(k => {
     const e = D.estrategias.find(x => x.id === k);
-    return e ? { id: k, n: e.n, c: e.c, det: e.capas.map(c => c.n).join(' · ') + ` · ${(e.area / 1e4).toLocaleString('es-CO', { maximumFractionDigits: 1 })} ha` }
+    return e ? { id: k, n: e.n, c: e.c, det: e.capas.map(c => c.n).join(' · ') + (e.n_puntos ? ` · ${e.n_puntos.toLocaleString('es-CO')} puntos` : ` · ${(e.area / 1e4).toLocaleString('es-CO', { maximumFractionDigits: 1 })} ha`) }
       : { id: k, n: NOM[k], c: COL[k] || '#94a3b8', sinLugar: true, det: 'Sin una ubicación única en el mapa · toca para ver su red de actores' };
   });
   return {
     lista,
-    ver: (id, on) => { const k = CAPA[id]; if (!k) return; if (on && !k.lista) { armar(k.e, k.gr); k.lista = true; } k.gr.visible = on; },
+    ver: (id, on) => { PREN[id] = on; conexiones(); const k = CAPA[id]; if (!k) return; if (on && !k.lista) { armar(k.e, k.gr); k.lista = true; } k.gr.visible = on; },
+    marcar: (id, on) => { PREN[id] = on; conexiones(); }, // E1 y E3 tienen su propio plan: solo cuentan para las conexiones
     // sitios de huerta en el suelo (lotes baldíos) para las colmenas y lombrices de la red biótica
     sitios: () => { const e = D.estrategias.find(x => x.id === 'E8'); const c = e && e.capas.find(x => /baldío/i.test(x.n)); return c ? c.lotes.map(l => ({ id: 'E8', n: 'Huerta en lote baldío', poly: W2(l) })) : []; }
   };

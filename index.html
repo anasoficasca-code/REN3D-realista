@@ -3064,7 +3064,7 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
   const listoK = () => T3 && T3.ready && T3.net ? Promise.resolve() : new Promise(r => setTimeout(() => r(listoK()), 400));
   const FAUNA_RED = ['tingua', 'garza', 'pato', 'monjita', 'copeton', 'mirla', 'colibri']; // las mueve la red biótica
   let EST = null; // estrategias de la propuesta (data3d/estrategias.js): reemplazan las convenciones P1-P4
-  Promise.all([import('./data3d/giro_sim.js?v=16'), import('./data3d/estrategias.js?v=5'), listoK()])
+  Promise.all([import('./data3d/giro_sim.js?v=16'), import('./data3d/estrategias.js?v=6'), listoK()])
     .then(async ([m, me]) => {
       try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0 }); } catch (e) { console.warn('estrategias:', e); }
       let PLAN = null; // E1 Bavaria Común: plan maestro de la antigua fábrica (data3d/bavaria_plan.js)
@@ -3072,11 +3072,11 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
       let CPLAN = null; // E3 Corabastos reducido: transformación de la central (data3d/corabastos_plan.js)
       try { CPLAN = await (await import('./data3d/corabastos_plan.js?v=2')).iniciarPlanCorabastos({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 }); T3.planCorabastos = CPLAN; } catch (e) { console.warn('plan Corabastos:', e); }
       const lista = EST ? EST.lista.slice() : []; if (PLAN) lista.unshift(PLAN.entrada);
-      return m.iniciarSimulacion({ T3, say, sinFauna: FAUNA_RED, sinMalla: ['abeja'], estrategias: lista.length ? lista : null, verEstrategia: (id, on) => { const x = lista.find(e => e.id === id); if (id === 'E1') return PLAN && PLAN.ver(on); if (id === 'E3' && CPLAN) return CPLAN.ver(on); if (x && x.sinLugar) { if (T3.actores) { T3.actores.ver(id); T3.actores.alternar(on); } return; } return EST && EST.ver(id, on); } });
+      return m.iniciarSimulacion({ T3, say, sinFauna: FAUNA_RED, sinMalla: ['abeja'], estrategias: lista.length ? lista : null, verEstrategia: (id, on) => { if (id === 'E1') { if (EST) EST.marcar('E1', on); return PLAN && PLAN.ver(on); } if (id === 'E3' && CPLAN) { if (EST) EST.marcar('E3', on); return CPLAN.ver(on); } return EST && EST.ver(id, on); } }); // todas muestran su lugar; las conexiones entre estrategias se ven cuando las dos están prendidas
     })
     .then(() => import('./data3d/cielo.js?v=3')).then(m => { T3.cielo = m.iniciarCielo({ THREE: T3.THREE, T3, luzMalla }); }) // cielo y luz de 24 horas con el reloj de la simulación
     .then(() => import('./data3d/biotica.js?v=12')).then(m => m.iniciarBiotica({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0, movil: MOVIL, huertas: EST ? EST.sitios() : null }))
-    .then(() => import('./data3d/actores.js?v=5')).then(m => m.iniciarActores({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 })).then(a => { T3.actores = a; }) // capa de redes de actores (9 estrategias del Excel)
+    .then(() => import('./data3d/actores.js?v=6')).then(m => m.iniciarActores({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 })).then(a => { T3.actores = a; }) // capa de redes de actores (9 estrategias del Excel)
     .catch(e => console.warn('simulación Kennedy:', e));
 } else import('./data3d/simulador.js?v=6').then(m => {
   SIM = m.crearSimulador({
