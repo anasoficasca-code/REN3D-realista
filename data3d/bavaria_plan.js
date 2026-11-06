@@ -57,9 +57,9 @@ export async function iniciarPlanBavaria({ THREE, T3, lw, OX, OZ, Y0 = 2.0 }) {
 
   /* ---------- 1. resaltado del predio (estrategia prendida) ---------- */
   const resalte = new THREE.Group(); resalte.visible = false; T3.scene.add(resalte);
-  const mRes = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  const mRes = new THREE.MeshBasicMaterial({ color: 0xef4444, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
   const fRes = new THREE.Mesh(forma(sitio, Y0 + 0.6), mRes); fRes.renderOrder = 6; resalte.add(fRes);
-  for (const dy of [0.7, 4, 8]) { const b = borde(sitio, Y0 + dy, 0x7dd3fc, dy > 1 ? 0.45 : 1); b.renderOrder = 7; resalte.add(b); }
+  for (const dy of [0.7, 4, 8]) { const b = borde(sitio, Y0 + dy, 0xfca5a5, dy > 1 ? 0.45 : 1); b.renderOrder = 7; resalte.add(b); }
 
   /* ---------- 2. plan (al tocar el resaltado) ---------- */
   const plan = new THREE.Group(); plan.visible = false; T3.scene.add(plan);
@@ -142,11 +142,11 @@ export async function iniciarPlanBavaria({ THREE, T3, lw, OX, OZ, Y0 = 2.0 }) {
 .bp-et{position:fixed;z-index:9;transform:translate(-50%,-100%);display:flex;align-items:center;gap:6px;padding:4px 9px 4px 4px;border-radius:999px;background:rgba(8,16,26,.88);border:1.5px solid var(--c);color:#e2f3ff;font:600 11px system-ui,-apple-system,"Segoe UI",sans-serif;white-space:nowrap;cursor:pointer}
 .bp-et b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:var(--c);color:#04121c;font-size:10px}
 .bp-et.sel{box-shadow:0 0 0 3px rgba(125,211,252,.45)}
-#bp-res{position:fixed;z-index:9;transform:translate(-50%,-100%);padding:6px 12px;border-radius:12px;background:rgba(8,16,26,.9);border:1.5px solid #38bdf8;color:#e2f3ff;font:700 12px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
-#bp-res small{display:block;font-weight:500;color:#7dd3fc;font-size:10.5px}
+#bp-res{position:fixed;z-index:9;transform:translate(-50%,-100%);padding:6px 12px;border-radius:12px;background:rgba(8,16,26,.9);border:1.5px solid #ef4444;color:#e2f3ff;font:700 12px system-ui,sans-serif;cursor:pointer;white-space:nowrap}
+#bp-res small{display:block;font-weight:500;color:#fca5a5;font-size:10.5px}
 #bp-pan{position:fixed;z-index:20;right:14px;top:14px;bottom:14px;width:min(400px,calc(100vw - 28px));overflow:auto;scrollbar-width:thin;padding:14px 15px;border-radius:16px;background:rgba(8,16,26,.94);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:1px solid rgba(125,211,252,.3);color:#e2f3ff;font:12px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;display:none}
 #bp-pan.on{display:block}
-#bp-pan .cab{display:flex;align-items:flex-start;gap:10px}#bp-pan .cab span{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;background:#38bdf8;color:#04121c;font:800 13px system-ui}
+#bp-pan .cab{display:flex;align-items:flex-start;gap:10px}#bp-pan .cab span{display:grid;place-items:center;flex:none;width:34px;height:34px;border-radius:9px;background:#ef4444;color:#04121c;font:800 13px system-ui}
 #bp-pan h4{margin:0;font-size:16px}#bp-pan .cab em{display:block;font-style:normal;color:#94a3b8;font-size:11px}
 #bp-pan .x{margin-left:auto;width:30px;height:30px;border:none;border-radius:8px;background:rgba(255,255,255,.07);color:#cbd5e1;font:700 16px system-ui;cursor:pointer}
 #bp-pan .fr{margin:10px 0 0;padding:9px 10px;border-radius:10px;font-size:12px}
@@ -243,7 +243,7 @@ export async function iniciarPlanBavaria({ THREE, T3, lw, OX, OZ, Y0 = 2.0 }) {
   };
   requestAnimationFrame(bucle);
   return {
-    entrada: { id: 'E1', n: 'Bavaria Común', c: '#38bdf8', n_lotes: 1, area: 712000 },
+    entrada: { id: 'E1', n: 'Bavaria Común', c: '#ef4444', n_lotes: 1, area: 712000 },
     ver: (on) => { resalte.visible = on; if (!on) cerrar(); },
     abrir
   };

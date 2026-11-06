@@ -73,6 +73,10 @@ for n in naves:
             m.append(pixel(n['c'][0] + ux * n['L'] * 0.45 * i / 8 + vx * n['W'] * 0.4 * j / 3, n['c'][1] + uy * n['L'] * 0.45 * i / 8 + vy * n['W'] * 0.4 * j / 3))
     m.sort(key=sum); m = m[len(m) // 5: -len(m) // 5 or None]  # sin carros ni sombras
     n['col'] = '#%02x%02x%02x' % tuple(round(sum(p[k] for p in m) / len(m)) for k in range(3))
+# distancia de cada nave al humedal La Vaca (colinda con Corabastos): las más cercanas se desmontan en la estrategia E3
+G2 = json.load(open(os.path.join(D, 'giro_sim.json'), encoding='utf-8'))
+VACA = next((Polygon([((LON0 + x / MX + 74.17) * MX - EX, (LAT0 - y / MY - 4.63) * MY - EY) for x, y in h['poly']]) for h in G2['humedales'] if 'Vaca' in h['n']), None)
+for n in naves: n['dh'] = round(Point(n['c']).distance(VACA)) if VACA is not None else 9999
 for n in naves: del n['pg']
 json.dump({'poly': [[round(x, 1), round(y, 1)] for x, y in poly], 'naves': naves}, open(os.path.join(D, 'corabastos.json'), 'w'), separators=(',', ':'))
 print('naves', len(naves), '· otras huellas', otros)

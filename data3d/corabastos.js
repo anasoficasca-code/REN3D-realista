@@ -5,7 +5,7 @@
      desde arriba), en lámina del color real de cada bodega
    - muros claros con zócalo amarillo y portones enrollables oscuros en los lados largos (muelles de carga)
    - marquesina sobre los muelles en los lados largos libres, con sus columnas */
-export function construirCorabastos({ THREE, T3, lw, D, liviano }) {
+function mallaNaves({ THREE, T3, lw, D, liviano }, lista) {
   const P = [], C = [], I = [];
   const c = new THREE.Color();
   const col = (hex, k = 1) => { c.set(hex); return [c.r * k, c.g * k, c.b * k]; };
@@ -19,7 +19,7 @@ export function construirCorabastos({ THREE, T3, lw, D, liviano }) {
     quad([A[0], y1, A[1]], [B[0], y1, B[1]], [Cc[0], y1, Cc[1]], [Dd[0], y1, Dd[1]], k);
     quad([A[0], y0, A[1]], [Dd[0], y0, Dd[1]], [Cc[0], y0, Cc[1]], [B[0], y0, B[1]], k);
   };
-  for (const n of D.naves) {
+  for (const n of lista) {
     // eje largo u y ancho v, en el marco del mundo (lw invierte y)
     const [cx, cz] = lw(n.c[0], n.c[1]), e = lw(n.c[0] + Math.cos(n.a), n.c[1] + Math.sin(n.a));
     const ux = e[0] - cx, uz = e[1] - cz, vx = -uz, vz = ux;
@@ -68,8 +68,16 @@ export function construirCorabastos({ THREE, T3, lw, D, liviano }) {
   const mat = liviano ? new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true })
     : new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, flatShading: true, roughness: 0.82, metalness: 0.08 });
   const m = new THREE.Mesh(g, mat); m.name = 'corabastos'; m.castShadow = !liviano; m.receiveShadow = !liviano;
-  T3.scene.add(m);
   return m;
+}
+// dos mallas: las bodegas que se conservan y las que la estrategia E3 desmonta (a menos de 120 m del humedal La Vaca, campo dh)
+export function construirCorabastos(cfg) {
+  const lejos = cfg.D.naves.filter(n => !(n.dh < 120)), cerca = cfg.D.naves.filter(n => n.dh < 120);
+  const grupo = new cfg.THREE.Group(); grupo.name = 'corabastos';
+  const conservadas = mallaNaves(cfg, lejos), quitadas = cerca.length ? mallaNaves(cfg, cerca) : new cfg.THREE.Group();
+  grupo.add(conservadas, quitadas); cfg.T3.scene.add(grupo);
+  grupo.userData = { conservadas, quitadas, n_quitadas: cerca.length };
+  return grupo;
 }
 // ¿la huella (marco del modelo) cae en una nave de Corabastos? (para quitar su caja genérica)
 export function enNave(D, x, y) {
