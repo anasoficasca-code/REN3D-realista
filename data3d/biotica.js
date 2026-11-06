@@ -72,6 +72,7 @@ const R_RED = 220, R_RAPAZ = 420, R_ARBOL = 90, CERCA = 18;
 export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = false, huertas = null }) {
   const [{ LineSegments2 }, { LineSegmentsGeometry }, { LineMaterial }] = await Promise.all([import('three/addons/lines/LineSegments2.js'), import('three/addons/lines/LineSegmentsGeometry.js'), import('three/addons/lines/LineMaterial.js')]);
   const [D, B, TR, PQ] = await Promise.all(['data3d/giro_sim.json', 'data3d/biotica.json?v=2', 'data3d/trees.json', 'data3d/parques.json'].map(u => fetch(u).then(r => r.json())));
+  const [BV, BA, CO] = await Promise.all(['data3d/bavaria.json?v=2', 'data3d/bavaria_arboles.json?v=2', 'data3d/corabastos.json'].map(u => fetch(u).then(r => r.json()).catch(() => null))); // Bavaria y Corabastos: también son hábitat
   const rnd = Math.random, gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); };
   const TIPOS = B.tipos, COLT = TIPOS.map(t => new THREE.Color(t.c));
   const GY = Y0; // suelo y lámina de agua en el marco de la maqueta (el mismo de las personas de la simulación)
@@ -117,13 +118,27 @@ export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = 
     const borde = poly.concat([poly[0]]);
     return { n: h.n, tipo: 'huerta', poly, borde, x0, x1, z0, z1, cx: cx / poly.length, cz: cz / poly.length, ag: {}, k: 1 };
   });
-  const HAB = HUM.concat(PAR, HUE);
+  // bosque de la antigua fábrica de Bavaria y predio de Corabastos: hábitats con sus propias especies
+  const POR_BOSQUE = { copeton: 10, mirla: 8, torcaza: 8, chamon: 4, cucarachero: 6, colibri: 4, abeja: 6, lombriz: 5, curi: 6, comadreja: 2, rata: 5, lagartija: 5, culebra: 2, caracol: 6, cernicalo: 1, buho: 1 };
+  const POR_CORA = { rata: 18, torcaza: 14, copeton: 8, chamon: 6, mirla: 3, cucarachero: 3, caracol: 4, comadreja: 1, cernicalo: 1, lagartija: 2 };
+  const habitat = (n, polyModelo, cnt) => { const poly = polyModelo.map(p => lw(p[0], p[1])); let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; for (const p of poly) { x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); z0 = Math.min(z0, p[1]); z1 = Math.max(z1, p[1]); } return { n, tipo: 'parque', poly, borde: poly.concat([poly[0]]), x0, x1, z0, z1, cx: (x0 + x1) / 2, cz: (z0 + z1) / 2, ag: {}, k: 1, cnt }; };
+  const EXTRA = []; if (BV && BV.sitio) EXTRA.push(habitat('Bosque de la antigua fábrica de Bavaria', BV.sitio, POR_BOSQUE)); if (CO && CO.poly) EXTRA.push(habitat('Corabastos', CO.poly, POR_CORA));
+  const HAB = HUM.concat(PAR, HUE, EXTRA);
   // árboles reales (censo SIGAU) en toda la zona, en un índice espacial único
   const CEL = 20, GRID = new Map(), gk = (i, j) => i * 100003 + j;
   for (const t of TR.t) {
     const [x, z] = lw(t[0], t[1]); if (Math.hypot(x - OX, z - OZ) > 2700) continue;
     const a = { x, z, h: Math.max(2.5, t[2]), y: GY + Math.max(2.5, t[2]) * 0.82, sp: t[3], fl: FLORA_SP.get(t[3]) || [], n: TR.sp[t[3]] };
     const g = gk(Math.floor(x / CEL), Math.floor(z / CEL)); if (!GRID.has(g)) GRID.set(g, []); GRID.get(g).push(a);
+  }
+  // árboles del bosque de Bavaria (de la imagen satelital) como especies del censo que están en la red: eucalipto, urapán, ciprés y acacia
+  if (BA && BA.arboles) {
+    const sp = (re) => TR.sp.findIndex(s => re.test(s)), MEZCLA = [[sp(/^Eucalipto común/i), 0.5], [sp(/^Urapán/i), 0.25], [sp(/^Ciprés, Pino ciprés/i), 0.15], [sp(/^Acacia negra/i), 0.1]].filter(m => m[0] >= 0);
+    BA.arboles.forEach((t, i) => {
+      let r = ((Math.sin(i * 12.9898) * 43758.5453) % 1 + 1) % 1, s = MEZCLA.length ? MEZCLA[MEZCLA.length - 1][0] : 0; for (const [k, p] of MEZCLA) { if (r < p) { s = k; break; } r -= p; }
+      const [x, z] = lw(t[0], t[1]), h = Math.min(16, t[2]), a = { x, z, h, y: GY + h * 0.82, sp: s, fl: FLORA_SP.get(s) || [], n: TR.sp[s] || 'Árbol' };
+      const g = gk(Math.floor(x / CEL), Math.floor(z / CEL)); if (!GRID.has(g)) GRID.set(g, []); GRID.get(g).push(a);
+    });
   }
   const arbolesCerca = (h, x, z, r) => { const L = [], c0 = Math.floor((x - r) / CEL), c1 = Math.floor((x + r) / CEL), r0 = Math.floor((z - r) / CEL), r1 = Math.floor((z + r) / CEL); for (let i = c0; i <= c1; i++) for (let j = r0; j <= r1; j++) { const g = GRID.get(gk(i, j)); if (g) for (const a of g) if (Math.hypot(a.x - x, a.z - z) < r) L.push(a); } return L; };
   const puntoEn = (h) => { for (let k = 0; k < 200; k++) { const x = h.x0 + rnd() * (h.x1 - h.x0), z = h.z0 + rnd() * (h.z1 - h.z0); if (dentro(x, z, h.poly)) return [x, z]; } return [h.cx, h.cz]; };
@@ -191,7 +206,7 @@ export async function iniciarBiotica({ THREE, T3, lw, OX, OZ, Y0 = 2.0, movil = 
   /* ---------- agentes ---------- */
   const AG = [], POR = {}; let id = 0;
   const redondeo = (v) => Math.floor(v) + (rnd() < v % 1 ? 1 : 0); // reparto sin sesgo de fracciones
-  const nPor = (k, h) => h.tipo === 'huerta' ? redondeo((POR_HUERTA[k] || 0) * (movil ? 0.5 : 1)) : h.tipo === 'parque' ? redondeo((POR_PARQUE[k] || 0) * h.k * (movil ? 0.45 : 1))
+  const nPor = (k, h) => h.cnt ? redondeo((h.cnt[k] || 0) * (movil ? 0.5 : 1)) : h.tipo === 'huerta' ? redondeo((POR_HUERTA[k] || 0) * (movil ? 0.5 : 1)) : h.tipo === 'parque' ? redondeo((POR_PARQUE[k] || 0) * h.k * (movil ? 0.45 : 1))
     : Math.max(ESP[k].mov === 'rapaz' ? (h.k >= 1 ? 1 : 0) : 1, Math.round(ESP[k].cant * h.k * (movil ? 0.5 : 1)));
   for (const h of HAB) for (const k of Object.keys(ESP)) {
     const e = ESP[k]; if (!POR[k]) POR[k] = []; if (!h.ag[k]) h.ag[k] = [];

@@ -207,7 +207,7 @@ export async function iniciarSimulacion(cfg = {}) {
     <div class="gs-ley"><span>baja</span><i></i><span>alta</span></div>
     <div class="gs-fila" style="grid-template-columns:1fr 1fr"><button id="gs-ag" class="on">Agentes</button><button id="gs-cv-b" class="${SINP ? '' : 'on'}">${SINP ? 'Estrategias' : 'Convenciones'}</button></div>
     ${SINP ? `<div class="gs-sub">ESTRATEGIAS <span>toca para ver u ocultar</span></div>
-    ${EST.map(e => `<button class="gs-conv gs-est" data-e="${e.id}" style="opacity:.4;width:100%;height:auto;padding:4px 6px;background:none;text-align:left;font:inherit;color:inherit;letter-spacing:0;cursor:pointer"><b style="background:${e.c}">${e.id}</b><div>${e.n}<small>${e.n_lotes.toLocaleString('es-CO')} lotes · ${(e.area / 1e4).toLocaleString('es-CO', { maximumFractionDigits: 1 })} ha</small></div></button>`).join('')}`
+    ${EST.map(e => `<button class="gs-conv gs-est" data-e="${e.id}" style="opacity:.4;width:100%;height:auto;padding:4px 6px;background:none;text-align:left;font:inherit;color:inherit;letter-spacing:0;cursor:pointer"><b style="background:${e.c}">${e.id}</b><div>${e.n}<small>${e.det || (e.n_lotes.toLocaleString('es-CO') + ' lotes · ' + (e.area / 1e4).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' ha')}</small></div></button>`).join('')}`
     : `<div class="gs-sub">CONVENCIONES</div>
     ${Object.entries(CONV).map(([k, c]) => `<div class="gs-conv"><b style="background:${c.c}">${k}</b><div>${c.t}<small>${c.a} · ${c.h}</small></div></div>`).join('')}`}`;
   const der = document.createElement('div'); der.className = 'gs-pan'; der.id = 'gs-der';
@@ -257,7 +257,7 @@ export async function iniciarSimulacion(cfg = {}) {
   izq.querySelectorAll('#gs-capa button').forEach(b => b.onclick = () => { st0.capa = b.dataset.c; izq.querySelectorAll('#gs-capa button').forEach(x => x.classList.toggle('on', x === b)); vCache = -1; if (M3) capa3D(); });
   $('gs-ag').onclick = (e) => { st0.agentes = !st0.agentes; e.currentTarget.classList.toggle('on', st0.agentes); if (M3) for (const m of Object.values(MALLAS)) m.visible = st0.agentes; };
   $('gs-cv-b').onclick = (e) => { st0.conv = !st0.conv; e.currentTarget.classList.toggle('on', st0.conv); vCache = -1;
-    if (SINP) { izq.querySelectorAll('.gs-est').forEach(b => { b.classList.toggle('on', st0.conv); b.style.opacity = st0.conv ? 1 : 0.4; }); if (cfg.verEstrategia) for (const x of EST) cfg.verEstrategia(x.id, st0.conv); return; }
+    if (SINP) { izq.querySelectorAll('.gs-est').forEach(b => { b.classList.toggle('on', st0.conv); b.style.opacity = st0.conv ? 1 : 0.4; }); if (cfg.verEstrategia) for (const x of EST) if (!x.sinLugar) cfg.verEstrategia(x.id, st0.conv); return; }
     if (M3) ZONAS3D.visible = st0.conv; };
   izq.querySelectorAll('.gs-est').forEach(b => b.onclick = () => { const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.style.opacity = on ? 1 : 0.4; if (cfg.verEstrategia) cfg.verEstrategia(b.dataset.e, on); });
 

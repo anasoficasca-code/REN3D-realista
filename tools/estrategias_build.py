@@ -15,13 +15,15 @@ SHP = sys.argv[1] if len(sys.argv) > 1 else r'C:\Users\ACER\Downloads\Propuesta 
 MX = 111320 * math.cos(math.radians(4.63)); MY = 110540.0
 def xy(lo, la): return ((lo + 74.17) * MX + 5193.24, (la - 4.63) * MY + 2090.06)  # GEO de index.html
 
+# capas del shapefile (P1 se quitó de la propuesta). Desde el Excel de las 9 estrategias, cada capa pertenece a una estrategia:
+# las huertas (lotes baldíos, cubiertas en altura, viviendas) son E8 Red de huertas y el distrito biotecnológico es E4 Orgánicos y hongos
 EST = {
-    # P1 (E1 huertas en humedal y ronda de río) se quitó de la propuesta
     'P2': ('E2', 'Huertas en lotes baldíos', '#a3e635'),
     'P3': ('E3', 'Huertas en cubiertas de vivienda en altura', '#f59e0b'),
     'P4': ('E4', 'Distrito biotecnológico', '#a78bfa'),
     'P5': ('E5', 'Huertas en viviendas', '#f472b6'),
 }
+A_ESTRATEGIA = {'P2': 'E8', 'P3': 'E8', 'P5': 'E8', 'P4': 'E4'}
 r = shapefile.Reader(SHP, encoding='utf-8')
 F = [f[0] for f in r.fields[1:]]; iP, iD = F.index('PROPUESTA'), F.index('descripci')
 out = {k: {'id': v[0], 'p': k, 'n': v[1], 'c': v[2], 'lotes': [], 'area': 0.0, 'desc': {}} for k, v in EST.items()}
@@ -54,7 +56,7 @@ arbol = STRtree(geos)
 pr = [g.representative_point() for g in geos]
 for e in out.values():
     # huertas en cubiertas (E3) y en viviendas (E5): se pinta el TECHO de cada edificio que cae dentro del lote; si no tiene edificios, el lote en el suelo
-    e['n0'] = len(e['lotes']); techo = e['id'] in ('E3', 'E5'); suelo, techos = [], []
+    e['n0'] = len(e['lotes']); techo = e['p'] in ('P3', 'P5'); suelo, techos = [], []
     for l in e['lotes']:
         lote = Polygon([(l[k] / 2, l[k + 1] / 2) for k in range(0, len(l), 2)]); hay = False
         if techo and lote.is_valid:
@@ -64,16 +66,27 @@ for e in out.values():
                     techos.append([v for q in c for v in (round(q[0] * 2), round(q[1] * 2))] + [round(alts[j] * 10)]); hay = True
         if not hay: suelo.append(l)
     e['lotes'], e['techos'] = suelo, techos  # techos: anillo + altura en decímetros al final
+# ---- agrupar por estrategia del Excel (nombres en data3d/actores.json) y agregar Corabastos (E3) y humedales (E5) ----
+NOM = {e['id']: e['n'] for e in json.load(open(os.path.join(RAIZ, 'data3d', 'actores.json'), encoding='utf-8'))['estrategias']}
+COLOR = {'E3': '#fb923c', 'E4': '#a78bfa', 'E5': '#34d399', 'E8': '#84cc16'}
+def anillo(P): return [v for q in P for v in (round(q[0] * 2), round(q[1] * 2))]
+G = {}
+for p, e in out.items():
+    if not e['lotes'] and not e['techos']: continue
+    k = A_ESTRATEGIA[p]; g = G.setdefault(k, {'id': k, 'n': NOM.get(k, k), 'c': COLOR[k], 'capas': [], 'area': 0, 'n_lotes': 0})
+    g['capas'].append({'n': e['n'], 'c': e['c'], 'lotes': e['lotes'], 'techos': e['techos']}); g['area'] += e['area']; g['n_lotes'] += e['n0']
+CO = json.load(open(os.path.join(RAIZ, 'data3d', 'corabastos.json')))
+G['E3'] = {'id': 'E3', 'n': NOM.get('E3', 'E3'), 'c': COLOR['E3'], 'capas': [{'n': 'Corabastos', 'c': COLOR['E3'], 'lotes': [anillo(CO['poly'])], 'techos': []}], 'area': Polygon(CO['poly']).area, 'n_lotes': 1}
+GS = json.load(open(os.path.join(RAIZ, 'data3d', 'giro_sim.json'), encoding='utf-8'))
+LAT0, LON0 = 4.640683, -74.149778
+hum = [[xy(LON0 + x / MX, LAT0 - y / MY) for x, y in h['poly']] for h in GS['humedales']]
+G['E5'] = {'id': 'E5', 'n': NOM.get('E5', 'E5'), 'c': COLOR['E5'], 'capas': [{'n': 'Humedales El Burro, La Vaca y Techo', 'c': COLOR['E5'], 'lotes': [anillo(h) for h in hum], 'techos': []}], 'area': sum(Polygon(h).area for h in hum), 'n_lotes': len(hum)}
 res = []
-for p in sorted(out):
-    e = out[p]
-    if not e['lotes']: continue
-    T = e['lotes'] or [t[:-1] for t in e['techos']]
-    xs = [l[k] for l in T for k in range(0, len(l), 2)]; ys = [l[k] for l in T for k in range(1, len(l), 2)]
-    e['centro'] = [round(sum(xs) / len(xs) / 2), round(sum(ys) / len(ys) / 2)]
-    e['area'] = round(e['area']); e['n_lotes'] = e.pop('n0')
-    res.append(e)
-json.dump({'fuente': 'Propuesta shp/lote.shp (campo PROPUESTA y descripci)', 'escala': 0.5, 'estrategias': res},
+for k in sorted(G, key=lambda x: int(x[1:])):
+    g = G[k]; T = [l for c in g['capas'] for l in c['lotes']] or [t[:-1] for c in g['capas'] for t in c['techos']]
+    xs = [l[i] for l in T for i in range(0, len(l), 2)]; ys = [l[i] for l in T for i in range(1, len(l), 2)]
+    g['centro'] = [round(sum(xs) / len(xs) / 2), round(sum(ys) / len(ys) / 2)]; g['area'] = round(g['area']); res.append(g)
+json.dump({'fuente': 'Propuesta shp/lote.shp (PROPUESTA) + Corabastos y humedales; nombres del Excel de las 9 estrategias', 'escala': 0.5, 'nombres': NOM, 'estrategias': res},
           open(os.path.join(RAIZ, 'data3d', 'estrategias.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
-for e in res: print(e['id'], e['n'], '·', e['n_lotes'], 'anillos ·', round(e['area'] / 1e4, 1), 'ha ·', e['desc'])
+for e in res: print(e['id'], e['n'], '·', [c['n'] for c in e['capas']], '·', round(e['area'] / 1e4, 1), 'ha')
 print('tamaño', round(os.path.getsize(os.path.join(RAIZ, 'data3d', 'estrategias.json')) / 1e6, 2), 'MB')
