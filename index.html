@@ -1572,7 +1572,7 @@ function materialEdificios(THREE) {
   const PBR = REALISTA && !LIVIANO; // normales y rugosidad solo con el material estándar (en celular/gafas el material barato no las usa)
   const FACHADA = REALISTA ? `{
         float L = vWl.z, H = vWl.w;
-        if (L > 1.2 && H > 2.4 && vWP.y > 0.05 && vWP.y < H - 0.12) {
+        if (L > 1.2 && H > 2.4 && vWP.y > 0.05 && vWP.y < H - (H >= 4.5 ? 1.2 : 0.12)) {
           float u = dot(vWP.xz - vWs, vWl.xy);
           float cw = L / max(1.0, floor(L / 3.1));                  // módulos de ventana repartidos y centrados en ESTE muro
           vec2 tuv = vec2(u / (cw * 4.0), vWP.y / 12.0);
@@ -1591,7 +1591,15 @@ function materialEdificios(THREE) {
             gWin = win * step(r1, uLuces) * uNoche * (0.55 + 0.45 * r2);
             gWinC = mix(vec3(1.0, 0.72, 0.4), vec3(0.95, 0.93, 0.86), step(0.7, r2)) * (fc.y > 0.7 ? 0.8 : 1.0);
           }
-        }}` : null;
+        }
+        if (L > 1.2 && H >= 4.5 && vWP.y >= H - 1.2) { // cornisa y antepecho: canto oscuro de la placa (sombra) y muro de remate más claro
+          float yy = vWP.y - (H - 1.2), aa = fwidth(vWP.y) * 1.5;
+          vec3 base = diffuseColor.rgb;
+          float canto = smoothstep(0.0, aa, yy) * (1.0 - smoothstep(0.34 - aa, 0.34 + aa, yy));
+          diffuseColor.rgb = mix(base * 1.07 + 0.02, base * 0.5, canto);
+          diffuseColor.rgb *= 1.0 - 0.18 * (1.0 - smoothstep(0.0, 0.22, yy - 0.34)) * step(0.34, yy); // sombra que la cornisa deja sobre el antepecho
+        }
+      }` : null;
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, T3.roofU);
     sh.vertexShader = sh.vertexShader
@@ -1735,9 +1743,11 @@ function buildChunks(THREE, B) {
       for (let i = 0; i < n; i++) {
         P.push(W[i][0], h, W[i][1]); C.push(col.w[0], col.w[1], col.w[2]); WL.push(muro[i][0], muro[i][1], muro[i][2], h); vc++;
       }
-      P.push(cx, h, cz); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++;
+      // cubierta plana metida 0,8 m bajo el borde del muro: el muro queda como antepecho (como en el render de Unreal); la cornisa la pinta el shader
+      const hT = REALISTA && !LIVIANO && h >= 4.5 ? h - 0.8 : h;
+      P.push(cx, hT, cz); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++;
       // techo con vértices propios: color liso, sin ventanas
-      for (let i = 0; i < n; i++) { P.push(W[i][0], h, W[i][1]); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++; }
+      for (let i = 0; i < n; i++) { P.push(W[i][0], hT, W[i][1]); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++; }
       for (let i = 0; i < n; i++) {
         const j = (i + 1) % n;
         // los dos triángulos del muro terminan en la esquina superior i: así ambos leen el mismo muro (vértice "provocador")
@@ -1750,6 +1760,7 @@ function buildChunks(THREE, B) {
       else for (let i = 0; i < n; i++) I.push(base + 2 * n, base + 2 * n + 1 + i, base + 2 * n + 1 + (i + 1) % n);
       vc = base + 3 * n + 1;
       if (REALISTA) vc = techoDosAguas(W, h, bi, col, P, C, I, WL, vc);
+
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
