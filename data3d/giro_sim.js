@@ -255,7 +255,7 @@ export async function iniciarSimulacion(cfg = {}) {
   $('gs-play').onclick = () => { st0.play = !st0.play; $('gs-play').textContent = st0.play ? '❚❚' : '▶'; };
   izq.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st0.vel = +b.dataset.v; izq.querySelectorAll('[data-v]').forEach(x => x.classList.toggle('on', x === b)); });
   izq.querySelectorAll('#gs-capa button').forEach(b => b.onclick = () => { st0.capa = b.dataset.c; izq.querySelectorAll('#gs-capa button').forEach(x => x.classList.toggle('on', x === b)); vCache = -1; if (M3) capa3D(); });
-  $('gs-ag').onclick = (e) => { st0.agentes = !st0.agentes; e.currentTarget.classList.toggle('on', st0.agentes); if (M3) for (const m of Object.values(MALLAS)) m.visible = st0.agentes; };
+  $('gs-ag').onclick = (e) => { st0.agentes = !st0.agentes; e.currentTarget.classList.toggle('on', st0.agentes); if (M3) { for (const [k, m] of Object.entries(MALLAS)) m.visible = st0.agentes && !(VEH && VEH.tipos[k]); if (VEH) VEH.visible = st0.agentes; } };
   $('gs-cv-b').onclick = (e) => { st0.conv = !st0.conv; e.currentTarget.classList.toggle('on', st0.conv); vCache = -1;
     if (SINP) { izq.querySelectorAll('.gs-est').forEach(b => { b.classList.toggle('on', st0.conv); b.style.opacity = st0.conv ? 1 : 0.4; }); if (cfg.verEstrategia) for (const x of EST) if (!x.sinLugar) cfg.verEstrategia(x.id, st0.conv); return; }
     if (M3) ZONAS3D.visible = st0.conv; };
@@ -434,7 +434,8 @@ export async function iniciarSimulacion(cfg = {}) {
   }
 
   /* ---------- modo maqueta 3D: calles pintadas en el suelo, zonas de las convenciones y agentes 3D ---------- */
-  const MALLAS = {}, Y0 = 2.0;
+  const MALLAS = {}, Y0 = (M3 && T3.sueloY != null ? T3.sueloY : 0.3) + 0.05; // a ras del suelo de la foto (todo lo propio se dibuja encima de ella)
+  let VEH = null; // vehículos realistas (data3d/vehiculos.js)
   let ZONAS3D = null, CINTAS = null, COLS = null, capa3D = () => {}, actualizar3D = () => ({}), flujo3D = () => {}, seleccion = () => {};
   if (M3) {
     window.KEN3D = T3; // para depurar desde la consola
@@ -482,6 +483,13 @@ export async function iniciarSimulacion(cfg = {}) {
       const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: col, emissive: col.clone().multiplyScalar(0.35) }), cuantos[k]);
       m.count = 0; m.frustumCulled = false; m.castShadow = !!FORMA[k]; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); T3.scene.add(m); MALLAS[k] = m;
     }
+    // ---- vehículos realistas: reemplazan las cajas de carros, motos, camiones y bicis (las cajas siguen guardando la posición para las luces de noche) ----
+    try {
+      const mv = await import('./vehiculos.js?v=1');
+      VEH = mv.crearVehiculos({ T3, cuantos, movil: !!T3.movil });
+      VEH.tipos = { carro: 1, moto: 1, camion: 1, bici: 1 };
+      for (const k of Object.keys(VEH.tipos)) if (MALLAS[k]) MALLAS[k].visible = false;
+    } catch (e) { console.warn('vehículos realistas:', e); VEH = null; }
     // ---- luces de los vehículos de noche (T3.noche: 0 de día, 1 de noche; la pone data3d/cielo.js): faros, luces traseras y haz en el piso ----
     const LUZ = {}; // tipo -> [faros, traseras, haz] (mismas matrices que la caja; el frente es +z)
     {
@@ -503,14 +511,18 @@ export async function iniciarSimulacion(cfg = {}) {
     const d = new THREE.Object3D(), n = {};
     actualizar3D = () => {
       const activos = {}; for (const k in n) n[k] = 0;
+      if (VEH) VEH.inicio();
       for (const a of A) {
         const m = MALLAS[a.tipo]; if (!m || a.vis === false || a.x === undefined) { if (a.vis !== false && a.x !== undefined) activos[a.tipo] = (activos[a.tipo] || 0) + 1; continue; }
         activos[a.tipo] = (activos[a.tipo] || 0) + 1;
         const dx = a.x - (a.px ?? a.x), dy = a.y - (a.py ?? a.y); if (dx * dx + dy * dy > 1e-4) a.rot = Math.atan2(dx, dy); a.px = a.x; a.py = a.y;
-        d.position.set(a.x + OX, Y0 + (ALTO[a.tipo] || 0), a.y + OZ); d.rotation.set(0, a.rot || 0, 0); d.scale.setScalar(ACT[a.tipo].g === 'n' && !FORMA[a.tipo] ? 2.2 : 1); d.updateMatrix();
+        let px = a.x + OX, pz = a.y + OZ;
+        if (VEH && VEH.tipos[a.tipo]) { const r = a.rot || 0, c = VEH.carril(a, a.tipo); px -= Math.cos(r) * c; pz += Math.sin(r) * c; VEH.poner(a, a.tipo, px, Y0, pz, r); } // por su carril, a la derecha
+        d.position.set(px, Y0 + (ALTO[a.tipo] || 0), pz); d.rotation.set(0, a.rot || 0, 0); d.scale.setScalar(ACT[a.tipo].g === 'n' && !FORMA[a.tipo] ? 2.2 : 1); d.updateMatrix();
         const i = n[a.tipo] = (n[a.tipo] || 0); m.setMatrixAt(i, d.matrix); n[a.tipo] = i + 1;
       }
       for (const [k, m] of Object.entries(MALLAS)) { m.count = n[k] || 0; m.instanceMatrix.needsUpdate = true; }
+      if (VEH) VEH.fin();
       const noche = T3.noche || 0; // luces de los vehículos: se prenden al atardecer
       for (const k of Object.keys(LUZ)) if (k !== '_haz') for (const x of LUZ[k]) { x.visible = noche > 0.05; x.count = n[k] || 0; }
       LUZ._haz.opacity = Math.min(1, noche) * 0.55;
