@@ -990,7 +990,8 @@ async function crearMallaGoogle(T) {
   // La foto de Google es solo el FONDO: tiene errores de altura de varios metros (copas y techos suben el suelo) y taparía las vías, el agua, los parques,
   // los árboles y los carros del modelo. Tras dibujarla se borra la profundidad, así todo lo propio se ve siempre encima y se ordena solo entre sí.
   // En modo REALISTA no se borra: la malla de Google es el mundo (con su profundidad real) y los carros, peatones y aves quedan dentro de ella.
-  if (REALISTA) return;
+  // Kennedy (?modo=kennedy): TODO lo propio (edificios, calles, agua, árboles, estrategias) va SIEMPRE encima de la foto de Google: nada queda enterrado ni tapado
+  if (REALISTA && !KEN) return;
   const cd = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
   cd.frustumCulled = false; cd.renderOrder = -5; cd.onBeforeRender = (r) => r.clearDepth(); T.scene.add(cd);
 }
@@ -1739,7 +1740,7 @@ function buildChunks(THREE, B) {
       const muro = W.map((q, i) => { const r = W[(i + 1) % n], dx = r[0] - q[0], dz = r[1] - q[1], L = Math.hypot(dx, dz) || 1; return [dx / L, dz / L, L]; });
       const base = vc;
       for (let i = 0; i < n; i++) {
-        P.push(W[i][0], KEN ? -0.4 : -3.0, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); WL.push(muro[i][0], muro[i][1], muro[i][2], h); vc++; // base más oscura (oclusión ambiental falsa)
+        P.push(W[i][0], KEN ? 0.3 : -3.0, W[i][1]); C.push(col.w[0] * 0.5, col.w[1] * 0.5, col.w[2] * 0.52); WL.push(muro[i][0], muro[i][1], muro[i][2], h); vc++; // base más oscura (oclusión ambiental falsa)
       }
       for (let i = 0; i < n; i++) {
         P.push(W[i][0], h, W[i][1]); C.push(col.w[0], col.w[1], col.w[2]); WL.push(muro[i][0], muro[i][1], muro[i][2], h); vc++;
