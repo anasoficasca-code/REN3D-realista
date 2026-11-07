@@ -1292,7 +1292,8 @@ async function initTodoReal() {
     if (!REALISTA) {
       if (!realOK) await buildTreesReal(THREE, T);
       buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    } else if (!GOOGLE) buildWater(THREE, W.filter(w => !w.pts || w.pts.some(p => enZona(p[0], p[1], 200)))); // realista: el agua animada de los humedales sí va (las vías y parques son los de la foto)
+    } else if (!GOOGLE) { buildWater(THREE, W.filter(w => !w.pts || w.pts.some(p => enZona(p[0], p[1], 200)))); // realista: el agua animada de los humedales sí va
+      if (KEN) buildRoads(THREE, N); } // Kennedy: vías propias (asfalto, andenes y rayas) siempre encima de la foto
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     if (!KEN) try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -2553,6 +2554,7 @@ function buildRoads(THREE, N) {
   const mRaya = new THREE.MeshBasicMaterial({ color: 0xf2f0e6, side: THREE.DoubleSide }); po(mRaya, 4);
   mk(GA, mAcera, true, 1); mk(GS, mAcera, false, 1); mk(GV, mVia, true, 2); mk(GR, mRaya, true, 3);
   T3.counts.vias = N.edges.length;
+  T3.viaY = Y_VIA; // altura del asfalto: los carros y peatones de la simulación se apoyan en ella
 }
 function flyTodo(i, instant) {
   const p = POIS[i]; idx = i;
@@ -3077,7 +3079,7 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
   const listoK = () => T3 && T3.ready && T3.net ? Promise.resolve() : new Promise(r => setTimeout(() => r(listoK()), 400));
   const FAUNA_RED = ['tingua', 'garza', 'pato', 'monjita', 'copeton', 'mirla', 'colibri']; // las mueve la red biótica
   let EST = null; // estrategias de la propuesta (data3d/estrategias.js): reemplazan las convenciones P1-P4
-  Promise.all([import('./data3d/giro_sim.js?v=17'), import('./data3d/estrategias.js?v=6'), listoK()])
+  Promise.all([import('./data3d/giro_sim.js?v=18'), import('./data3d/estrategias.js?v=6'), listoK()])
     .then(async ([m, me]) => {
       try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0 }); } catch (e) { console.warn('estrategias:', e); }
       let PLAN = null; // E1 Bavaria Común: plan maestro de la antigua fábrica (data3d/bavaria_plan.js)

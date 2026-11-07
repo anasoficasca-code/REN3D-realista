@@ -434,7 +434,7 @@ export async function iniciarSimulacion(cfg = {}) {
   }
 
   /* ---------- modo maqueta 3D: calles pintadas en el suelo, zonas de las convenciones y agentes 3D ---------- */
-  const MALLAS = {}, Y0 = (M3 && T3.sueloY != null ? T3.sueloY : 0.3) + 0.05; // a ras del suelo de la foto (todo lo propio se dibuja encima de ella)
+  const MALLAS = {}, Y0 = M3 && T3.viaY != null ? T3.viaY + 0.02 : (M3 && T3.sueloY != null ? T3.sueloY : 0.3) + 0.05; // sobre el asfalto de las vías (o a ras del suelo de la foto)
   let VEH = null; // vehículos realistas (data3d/vehiculos.js)
   let ZONAS3D = null, CINTAS = null, COLS = null, capa3D = () => {}, actualizar3D = () => ({}), flujo3D = () => {}, seleccion = () => {};
   if (M3) {
