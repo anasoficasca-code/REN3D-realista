@@ -771,6 +771,7 @@ function flight(ms) {
     updatePeatones(dt);
     if (T3.trees) T3.trees.update(cam);
     if (T3.huertas) T3.huertas.actualizar(cam); // plantas 3D de las terrazas cercanas
+    if (T3.torres) T3.torres.actualizar(cam); // huertas de los balcones cercanos
     if (T3.plants) T3.plants.update(cam);
     if (TRAF) updateTraffic(dt); else updateCars(dt);
     if (LIVIANO && T3.edificios && T3.edificios.length && (T3.tEdif = (T3.tEdif || 0) - dt) <= 0) { // celular/gafas: los bloques de edificios lejanos a la cámara no se dibujan (más lejos cuanto más alto se mira)
@@ -1708,6 +1709,7 @@ function techoDosAguas(W, h, bi, col, P, C, I, WL, vc) {
   return vc;
 }
 function buildChunks(THREE, B) {
+  const torresFoto = [];
   const CELL = LIVIANO ? 350 : 1500; // en gafas/celular: bloques pequeños, para poder descartar los que no se ven (y los lejanos)
   const cells = new Map();
   let skipped = 0, total = 0;
@@ -1721,6 +1723,7 @@ function buildChunks(THREE, B) {
       if (p[1] < miny) miny = p[1]; if (p[1] > maxy) maxy = p[1];
     }
     if ((maxx - minx) < 2 && (maxy - miny) < 2 && b.h <= 3) { skipped++; continue; }
+    if (KEN && b.h >= 30 && Math.hypot((minx + maxx) / 2 - TORRES_FOTO.x, (miny + maxy) / 2 - TORRES_FOTO.y) < TORRES_FOTO.r) { torresFoto.push(b); total++; continue; } // conjunto de la foto: se modela aparte
     const k = Math.floor((minx + maxx) / 2 / CELL) + '_' + Math.floor((miny + maxy) / 2 / CELL);
     if (!cells.has(k)) cells.set(k, []);
     cells.get(k).push(bi);
@@ -1780,8 +1783,17 @@ function buildChunks(THREE, B) {
     g.computeBoundingSphere(); T3.edificios.push({ mesh: bm, cx: g.boundingSphere.center.x, cz: g.boundingSphere.center.z, r: g.boundingSphere.radius });
   }
   T3.counts.b = (T3.counts.b || 0) + total; T3.counts.skip = skipped; if (total > 0) T3.edifOK = true;
+  if (torresFoto.length) { // torres de ladrillo con balcones-huerta (data3d/torres_balcones.js) y huerta en la terraza
+    const L = torresFoto.map(b => ({ W: b.pts.slice(0, -1).map(p => lw(p[0], p[1])), h: b.h, y0: 0.3 }));
+    for (const t of L) techosHuerta.push({ W: t.W, y: t.h - 0.45 });
+    if (!pTorres) pTorres = import('./data3d/torres_balcones.js?v=1').then(m => (T3.torres = m.crearTorres(T3.THREE, T3, { liviano: LIVIANO }))).catch(e => { console.warn('torres con balcones:', e); return null; });
+    pTorres.then(Tt => { if (Tt) Tt.agregar(L); });
+  }
   agregarHuertasTecho(techosHuerta);
 }
+// conjunto residencial de la foto de referencia (4.64416, -74.15350 -> coordenadas del modelo con dataToLL): torres de 12 pisos
+const TORRES_FOTO = { x: 7024.1, y: 3655.4, r: 180 };
+let pTorres = null;
 // huertas en las terrazas (data3d/huertas_techo.js): el módulo se carga una vez y recibe los techos de cada lote de edificios
 const HUERTA_H = 16.5; // más de 5 pisos (pisos de 3 m)
 let pHuertas = null;
