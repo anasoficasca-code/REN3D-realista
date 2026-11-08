@@ -770,6 +770,7 @@ function flight(ms) {
     updateAves();
     updatePeatones(dt);
     if (T3.trees) T3.trees.update(cam);
+    if (T3.huertas) T3.huertas.actualizar(cam); // plantas 3D de las terrazas cercanas
     if (T3.plants) T3.plants.update(cam);
     if (TRAF) updateTraffic(dt); else updateCars(dt);
     if (LIVIANO && T3.edificios && T3.edificios.length && (T3.tEdif = (T3.tEdif || 0) - dt) <= 0) { // celular/gafas: los bloques de edificios lejanos a la cámara no se dibujan (más lejos cuanto más alto se mira)
@@ -1727,6 +1728,7 @@ function buildChunks(THREE, B) {
   }
   const mat = materialEdificios(THREE);
   if (!T3.edificios) T3.edificios = [];
+  const techosHuerta = []; // Kennedy: terrazas de los edificios de más de 5 pisos (>= 6 pisos de 3 m) que se vuelven huerta
   for (const list of cells.values()) {
     const P = [], C = [], I = [], WL = [];
     let vc = 0;
@@ -1748,6 +1750,7 @@ function buildChunks(THREE, B) {
       }
       // cubierta plana metida 0,8 m bajo el borde del muro: el muro queda como antepecho (como en el render de Unreal); la cornisa la pinta el shader
       const hT = REALISTA && !LIVIANO && h >= 4.5 ? h - 0.45 : h;
+      if (KEN && h >= HUERTA_H) techosHuerta.push({ W, y: hT });
       P.push(cx, hT, cz); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++;
       // techo con vértices propios: color liso, sin ventanas
       for (let i = 0; i < n; i++) { P.push(W[i][0], hT, W[i][1]); C.push(col.r[0], col.r[1], col.r[2]); WL.push(0, 0, 0, h); vc++; }
@@ -1762,7 +1765,7 @@ function buildChunks(THREE, B) {
       if (tri.length) { for (const t of tri) I.push(base + 2 * n + 1 + t[0], base + 2 * n + 1 + t[1], base + 2 * n + 1 + t[2]); }
       else for (let i = 0; i < n; i++) I.push(base + 2 * n, base + 2 * n + 1 + i, base + 2 * n + 1 + (i + 1) % n);
       vc = base + 3 * n + 1;
-      if (REALISTA) vc = techoDosAguas(W, h, bi, col, P, C, I, WL, vc);
+      if (REALISTA && !(KEN && h >= HUERTA_H)) vc = techoDosAguas(W, h, bi, col, P, C, I, WL, vc); // los altos de Kennedy llevan huerta en la terraza (cubierta plana)
 
     }
     const g = new THREE.BufferGeometry();
@@ -1777,6 +1780,15 @@ function buildChunks(THREE, B) {
     g.computeBoundingSphere(); T3.edificios.push({ mesh: bm, cx: g.boundingSphere.center.x, cz: g.boundingSphere.center.z, r: g.boundingSphere.radius });
   }
   T3.counts.b = (T3.counts.b || 0) + total; T3.counts.skip = skipped; if (total > 0) T3.edifOK = true;
+  agregarHuertasTecho(techosHuerta);
+}
+// huertas en las terrazas (data3d/huertas_techo.js): el módulo se carga una vez y recibe los techos de cada lote de edificios
+const HUERTA_H = 16.5; // más de 5 pisos (pisos de 3 m)
+let pHuertas = null;
+function agregarHuertasTecho(L) {
+  if (!L.length) return;
+  if (!pHuertas) pHuertas = import('./data3d/huertas_techo.js?v=1').then(m => (T3.huertas = m.crearHuertasTecho(T3.THREE, T3, { liviano: LIVIANO }))).catch(e => { console.warn('huertas en terrazas:', e); return null; });
+  pHuertas.then(H => { if (H) H.agregar(L); });
 }
 function treeTexture(THREE, variant) {
   const S = 128, cv = document.createElement('canvas');
