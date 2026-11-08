@@ -51,6 +51,7 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0, dentro = nul
   }
   let HIDRO = null, HIDRO_P = null; // huertas hidropónicas de E8 (se arman la primera vez que se prende E8)
   const hidroponia = (on) => {
+    if (T3.huertas && T3.huertas.grupo) T3.huertas.grupo.visible = !on; // con E8 prendida, las terrazas de camas de tierra (huertas_techo.js) se vuelven hidropónicas
     if (HIDRO) { HIDRO.ver(on); return; } if (!on) return;
     if (!HIDRO_P) HIDRO_P = import('./huertas_hidro.js?v=1').then(m => { const e = D.estrategias.find(x => x.id === 'E8'), c = e && e.capas.find(x => /cubiertas/i.test(x.n)); if (!c) return null;
       const techos = (c.techos || []).map(t => ({ W: W2(t.slice(0, -1)), h: t[t.length - 1] / 10 })).filter(t => !dentro || dentro(t.W[0][0], t.W[0][1]));
