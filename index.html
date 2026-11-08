@@ -1293,8 +1293,8 @@ async function initTodoReal() {
     if (!REALISTA) {
       if (!realOK) await buildTreesReal(THREE, T);
       buildWater(THREE, W); buildParks(THREE, P); buildRoads(THREE, N);
-    } else if (!GOOGLE) { buildWater(THREE, W.filter(w => !w.pts || w.pts.some(p => enZona(p[0], p[1], 200)))); // realista: el agua animada de los humedales sí va
-      if (KEN) buildRoads(THREE, N); } // Kennedy: vías propias (asfalto, andenes y rayas) siempre encima de la foto
+    } else if (!GOOGLE) { const WK = W.filter(w => !w.pts || w.pts.some(p => enZona(p[0], p[1], 200))); buildWater(THREE, WK); // realista: el agua animada de los humedales sí va
+      if (KEN) { T3.aguaW = WK; buildRoads(THREE, N); } } // Kennedy: vías propias (asfalto, andenes y rayas) siempre encima de la foto
     marcarPaso('capas');
     if (new URLSearchParams(location.search).get('solo') === 'malla') { abrirPortada(); return true; } // modo de prueba: suelo, edificios, agua, parques y vías; sin árboles, carros ni aves
     if (!KEN) try { buildPeatones(THREE, N); } catch (e) { console.warn('peatones:', e); }
@@ -2240,7 +2240,7 @@ function updateTraffic(dt) {
     if (VS) { // vehículo realista: tipo y color fijos por id (70 % carros, 22 % motos, 8 % camiones), apoyado en el asfalto
       const id = A.ids[i]; if (dx * dx + dy * dy > 1e-6) TRAF.headF[id] = Math.atan2(dx, dy);
       if (TRAF.tipo[id] < 0) { const r = ((id * 2654435761) >>> 0) / 4294967296; TRAF.tipo[id] = r < 0.70 ? 0 : r < 0.92 ? 1 : 2; TRAF.obj[id] = {}; }
-      VS.poner(TRAF.obj[id], ['carro', 'moto', 'camion'][TRAF.tipo[id]], px, (T3.viaY != null ? T3.viaY : 0.62) + 0.02, pz, TRAF.headF[id]); n++; continue;
+      VS.poner(TRAF.obj[id], ['carro', 'moto', 'camion'][TRAF.tipo[id]], px, (T3.viaY != null ? T3.viaY : 0.62) + 0.02 + (T3.alzaVia ? T3.alzaVia(px, pz) : 0), pz, TRAF.headF[id]); n++; continue;
     }
     if (F) { // el modelo mira hacia +Z: el giro es atan2(dx, dz) y el carro avanza de frente
       if (!TRAF.headF) TRAF.headF = new Float32Array(TRAF.maxi);
@@ -2513,16 +2513,16 @@ function buildParks(THREE, P) {
 // vías: cintas continuas con uniones en las curvas (sin cortes ni huecos), calzada de concreto claro, acera, faldón y rayas centrales
 // FLUJO DE CARROS (Kennedy): cada vía se pinta según cuántos carros de la simulación SUMO la están usando
 // (densidad promedio de los últimos ~2 minutos simulados, en carros por km): verde = fluido, amarillo, naranja, rojo = muchos carros
-function crearFlujoCarros(THREE, N, ANCHO, dedupe, yVia) {
+function crearFlujoCarros(THREE, N, ANCHO, dedupe, yVia, RUTAS) {
   const E = [], P = [], I = [], vRango = []; // por vía: puntos, largo, ancho; y los vértices de su cinta
   const CEL = 25, grid = new Map(), clave = (x, z) => Math.floor(x / CEL) + ',' + Math.floor(z / CEL);
-  for (const e of N.edges) {
-    if (!e[1] || e[1].length < 2) continue;
-    const q = dedupe(e[1].map(p => lw(p[0], p[1]))); if (q.length < 2) continue;
+  for (let ie = 0; ie < N.edges.length; ie++) {
+    const e = N.edges[ie], R = RUTAS && RUTAS[ie]; if (!R) continue;
+    const q = R.q, al = R.el;
     const wd = (ANCHO[e[0]] || 6) * 0.55, ei = E.length, base = P.length / 3; let L = 0;
     for (let i = 0; i < q.length; i++) {
       const a = q[Math.max(0, i - 1)], b = q[Math.min(q.length - 1, i + 1)]; let dx = b[0] - a[0], dz = b[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-      P.push(q[i][0] - dz * wd / 2, yVia + 0.05, q[i][1] + dx * wd / 2, q[i][0] + dz * wd / 2, yVia + 0.05, q[i][1] - dx * wd / 2);
+      const yf = yVia + 0.05 + (al ? al[i] : 0); P.push(q[i][0] - dz * wd / 2, yf, q[i][1] + dx * wd / 2, q[i][0] + dz * wd / 2, yf, q[i][1] - dx * wd / 2);
       if (i < q.length - 1) {
         const v = base + i * 2; I.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
         const p0 = q[i], p1 = q[i + 1], sl = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]); L += sl;
@@ -2574,14 +2574,45 @@ function crearFlujoCarros(THREE, N, ANCHO, dedupe, yVia) {
   };
   return api;
 }
+// PUENTES SOBRE EL AGUA (Kennedy): el agua de los humedales y canales va a ~1,35-1,5 m (arriba de la foto de Google) y las vías a 0,62 m;
+// donde una vía cruza agua, sube con rampas suaves hasta un tablero ~2,4 m más alto que pasa por encima del agua (El Burro, canales).
+function mascaraAgua(W) {
+  const CEL = 2; let x0 = 1e9, z0 = 1e9, x1 = -1e9, z1 = -1e9; const polis = [];
+  for (const w of W) { if (!w.pts || w.pts.length < 2) continue; const q = w.pts.map(p => lw(p[0], p[1])), tipo = (w.tipo || '').toLowerCase();
+    const cerrado = q.length > 3 && Math.hypot(w.pts[0][0] - w.pts[w.pts.length - 1][0], w.pts[0][1] - w.pts[w.pts.length - 1][1]) < 1.0;
+    polis.push({ q, cerrado, ancho: /quebrada/.test(tipo) ? 5 : 7 }); for (const p of q) { x0 = Math.min(x0, p[0]); z0 = Math.min(z0, p[1]); x1 = Math.max(x1, p[0]); z1 = Math.max(z1, p[1]); } }
+  if (!polis.length) return null;
+  x0 -= 10; z0 -= 10; x1 += 10; z1 += 10;
+  const nx = Math.ceil((x1 - x0) / CEL), nz = Math.ceil((z1 - z0) / CEL), M = new Uint8Array(nx * nz);
+  for (const P of polis) {
+    if (P.cerrado) { // relleno por filas
+      let a = 1e9, b = -1e9; for (const p of P.q) { a = Math.min(a, p[1]); b = Math.max(b, p[1]); }
+      for (let j = Math.max(0, Math.floor((a - z0) / CEL)); j <= Math.min(nz - 1, Math.ceil((b - z0) / CEL)); j++) {
+        const z = z0 + (j + 0.5) * CEL, xs = [];
+        for (let i = 0, k = P.q.length - 1; i < P.q.length; k = i++) { const A = P.q[i], B = P.q[k]; if ((A[1] > z) !== (B[1] > z)) xs.push(A[0] + (z - A[1]) / (B[1] - A[1]) * (B[0] - A[0])); }
+        xs.sort((u, v) => u - v);
+        for (let k = 0; k + 1 < xs.length; k += 2) for (let i = Math.max(0, Math.floor((xs[k] - x0) / CEL)); i <= Math.min(nx - 1, Math.floor((xs[k + 1] - x0) / CEL)); i++) M[j * nx + i] = 1;
+      }
+    } else { // canal o quebrada: franja con su ancho
+      const r = P.ancho / 2 + 1, rc = Math.ceil(r / CEL);
+      for (let k = 0; k < P.q.length - 1; k++) { const A = P.q[k], B = P.q[k + 1], L = Math.hypot(B[0] - A[0], B[1] - A[1]), st = Math.max(1, Math.ceil(L / CEL));
+        for (let s = 0; s <= st; s++) { const x = A[0] + (B[0] - A[0]) * s / st, z = A[1] + (B[1] - A[1]) * s / st, ci = Math.floor((x - x0) / CEL), cj = Math.floor((z - z0) / CEL);
+          for (let dj = -rc; dj <= rc; dj++) for (let di = -rc; di <= rc; di++) { const i = ci + di, j = cj + dj; if (i >= 0 && j >= 0 && i < nx && j < nz && (di * di + dj * dj) * CEL * CEL <= r * r) M[j * nx + i] = 1; } } }
+    }
+  }
+  return (x, z) => { const i = Math.floor((x - x0) / CEL), j = Math.floor((z - z0) / CEL); return i >= 0 && j >= 0 && i < nx && j < nz && M[j * nx + i] === 1; };
+}
 function buildRoads(THREE, N) {
   const ANCHO = { major: 15, mid: 10, local: 6 }, ACERA = 2.4;
   const Y_ACERA = 0.55, Y_VIA = 0.62, Y_RAYA = 0.64, Y_BASE = -0.3, VT = 5;
+  const enAgua = KEN && T3.aguaW ? mascaraAgua(T3.aguaW) : null, ALZA = 2.4, RAMPA = 40; // alza del tablero sobre el agua y largo de cada rampa (m)
+  const GP = { P: [], I: [] }; // estructura de los puentes: borde del tablero, barandas y pilas
+  const RUTAS = []; // por vía: puntos y alza de cada punto (la usa la capa de flujo de carros)
   const mkG = () => ({ P: [], U: [], I: [] });
   const GV = mkG(), GA = mkG(), GS = mkG(), GR = mkG();
   const dedupe = (pts) => { const q = [pts[0]]; for (let i = 1; i < pts.length; i++) { const a = q[q.length - 1]; if (Math.hypot(pts[i][0] - a[0], pts[i][1] - a[1]) > 0.3) q.push(pts[i]); } return q; };
-  const cinta = (G, q, wd, y, faldon) => {
-    const n = q.length; if (n < 2) return;
+  const cinta = (G, q, wd, y, faldon, el, agua) => {
+    const n = q.length; if (n < 2) return; el = el || new Float32Array(n);
     const base = G.P.length / 3, L = [], R = [];
     for (let i = 0; i < n; i++) {
       let d0x = 0, d0z = 0, d1x = 0, d1z = 0;
@@ -2593,40 +2624,87 @@ function buildRoads(THREE, N) {
       if (l < 1e-4) { nx = -d0z; nz = d0x; } else { nx /= l; nz /= l; }
       const c = nx * (-d0z) + nz * d0x; // coseno del medio ángulo: ensancha la unión para que la cinta no se estreche en las curvas
       const hw = wd / 2 * Math.min(1.6, 1 / Math.max(c, 0.62)), x = q[i][0], z = q[i][1]; // unión limitada: en curvas muy cerradas no salen picos
-      G.P.push(x + nx * hw, y, z + nz * hw, x - nx * hw, y, z - nz * hw);
+      const yy = y + el[i]; G.P.push(x + nx * hw, yy, z + nz * hw, x - nx * hw, yy, z - nz * hw);
       G.U.push((x + nx * hw) / VT, (z + nz * hw) / VT, (x - nx * hw) / VT, (z - nz * hw) / VT);
       if (i < n - 1) { const a = base + 2 * i; G.I.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); } // cara frontal hacia arriba (si no, la doble cara invierte la normal y la vía sale negra)
-      if (faldon) { const ex = hw + 1.3; L.push([x + nx * hw, z + nz * hw, x + nx * ex, z + nz * ex]); R.push([x - nx * hw, z - nz * hw, x - nx * ex, z - nz * ex]); }
+      if (faldon) { const sobre = agua && agua[i], ex = sobre ? hw : hw + 1.3 + el[i] * 0.8; // sobre el agua: borde vertical del tablero (1,1 m); en las rampas: talud más ancho
+        L.push([x + nx * hw, z + nz * hw, x + nx * ex, z + nz * ex, yy, sobre ? yy - 1.1 : Y_BASE]); R.push([x - nx * hw, z - nz * hw, x - nx * ex, z - nz * ex, yy, sobre ? yy - 1.1 : Y_BASE]); }
     }
     if (faldon) for (const E of [L, R]) { // talud de la acera hasta el suelo (pendiente de 1,3 m), para que no se vea hueca por debajo ni como un muro
       const b0 = GS.P.length / 3;
       for (let i = 0; i < E.length; i++) {
-        GS.P.push(E[i][0], y, E[i][1], E[i][2], Y_BASE, E[i][3]); GS.U.push(E[i][0] / VT, E[i][1] / VT, E[i][2] / VT, E[i][3] / VT);
+        GS.P.push(E[i][0], E[i][4], E[i][1], E[i][2], E[i][5], E[i][3]); GS.U.push(E[i][0] / VT, E[i][1] / VT, E[i][2] / VT, E[i][3] / VT);
         if (i < E.length - 1) { const a = b0 + 2 * i; GS.I.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
       }
     }
   };
-  const rayas = (q, w) => { // línea central discontinua: 3,6 m de raya cada 9 m
+  const rayas = (q, w, el) => { // línea central discontinua: 3,6 m de raya cada 9 m
     let acc = 0, next = 2;
     for (let i = 0; i < q.length - 1; i++) {
       const a = q[i], b = q[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-6) continue;
       const dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L, nx = -dz, nz = dx;
       while (next < acc + L) {
-        const t = next - acc, x = a[0] + dx * t, z = a[1] + dz * t, hl = 1.8, hw = w / 2, b0 = GR.P.length / 3;
-        GR.P.push(x - dx * hl + nx * hw, Y_RAYA, z - dz * hl + nz * hw, x - dx * hl - nx * hw, Y_RAYA, z - dz * hl - nz * hw, x + dx * hl + nx * hw, Y_RAYA, z + dz * hl + nz * hw, x + dx * hl - nx * hw, Y_RAYA, z + dz * hl - nz * hw);
+        const t = next - acc, x = a[0] + dx * t, z = a[1] + dz * t, hl = 1.8, hw = w / 2, b0 = GR.P.length / 3, Yr = Y_RAYA + (el ? el[i] + (el[i + 1] - el[i]) * t / L : 0);
+        GR.P.push(x - dx * hl + nx * hw, Yr, z - dz * hl + nz * hw, x - dx * hl - nx * hw, Yr, z - dz * hl - nz * hw, x + dx * hl + nx * hw, Yr, z + dz * hl + nz * hw, x + dx * hl - nx * hw, Yr, z + dz * hl - nz * hw);
         GR.I.push(b0, b0 + 2, b0 + 1, b0 + 1, b0 + 2, b0 + 3); next += 9;
       }
       acc += L;
     }
   };
+  // 1) puntos de cada vía y cuáles caen sobre el agua; alza propia de cada vía (rampas medidas a lo largo de la vía)
+  const PRE = [], nodo = new Map(), kN = (p) => Math.round(p[0]) + ',' + Math.round(p[1]);
   for (const e of N.edges) {
-    if (!e[1] || e[1].length < 2) continue;
-    const q = dedupe(e[1].map(p => lw(p[0], p[1])));
-    if (q.length < 2) continue;
-    const wd = ANCHO[e[0]] || 6;
-    cinta(GA, q, wd + 2 * ACERA, Y_ACERA, true);
-    cinta(GV, q, wd, Y_VIA, false);
-    if (e[0] !== 'local') rayas(q, e[0] === 'major' ? 0.22 : 0.16);
+    if (!e[1] || e[1].length < 2) { PRE.push(null); continue; }
+    let q = dedupe(e[1].map(p => lw(p[0], p[1])));
+    if (q.length < 2) { PRE.push(null); continue; }
+    let agua = null, el = null, s = null;
+    if (enAgua && q.some((p, i) => i < q.length - 1 && (enAgua(p[0], p[1]) || enAgua((p[0] + q[i + 1][0]) / 2, (p[1] + q[i + 1][1]) / 2)) || enAgua(q[q.length - 1][0], q[q.length - 1][1]))) {
+      const d = [q[0]]; for (let i = 1; i < q.length; i++) { const a = q[i - 1], b = q[i], L = Math.hypot(b[0] - a[0], b[1] - a[1]), k = Math.ceil(L / 4); for (let j = 1; j <= k; j++) d.push([a[0] + (b[0] - a[0]) * j / k, a[1] + (b[1] - a[1]) * j / k]); }
+      q = d; agua = q.map(p => enAgua(p[0], p[1]));
+    }
+    s = new Float32Array(q.length); for (let i = 1; i < q.length; i++) s[i] = s[i - 1] + Math.hypot(q[i][0] - q[i - 1][0], q[i][1] - q[i - 1][1]);
+    el = new Float32Array(q.length);
+    if (agua) { const dentro = []; agua.forEach((v, i) => v && dentro.push(s[i])); for (let i = 0; i < q.length; i++) { let m = 1e9; for (const t of dentro) m = Math.min(m, Math.abs(s[i] - t)); el[i] = m < 1e8 ? ALZA * rampa(m) : 0; } }
+    for (const [i, k] of [[0, kN(q[0])], [q.length - 1, kN(q[q.length - 1])]]) nodo.set(k, Math.max(nodo.get(k) || 0, el[i] || 0));
+    PRE.push({ e, q, agua, el, s });
+  }
+  function rampa(m) { const t = Math.max(0, Math.min(1, 1 - (m - 4) / RAMPA)); return t * t * (3 - 2 * t); }
+  // 2) continuidad en los cruces: una vía que llega a un extremo de puente sube con su propia rampa
+  for (const R of PRE) { if (!R) continue; const { q, el, s } = R, nI = q.length - 1, a0 = nodo.get(kN(q[0])) || 0, a1 = nodo.get(kN(q[nI])) || 0;
+    if (a0 > 0.01 || a1 > 0.01) for (let i = 0; i <= nI; i++) el[i] = Math.max(el[i], a0 * rampa(s[i] + 4 - 0) * (a0 > 0.01 ? 1 : 0), a1 * rampa(s[nI] - s[i] + 4) * (a1 > 0.01 ? 1 : 0)); }
+  // 3) cintas, rayas y estructura de los puentes
+  for (const R of PRE) {
+    if (!R) { RUTAS.push(null); continue; }
+    const { e, q, agua, el } = R, wd = ANCHO[e[0]] || 6, hayAlza = el.some(v => v > 0.01);
+    cinta(GA, q, wd + 2 * ACERA, Y_ACERA, true, el, agua);
+    cinta(GV, q, wd, Y_VIA, false, el);
+    if (e[0] !== 'local') rayas(q, e[0] === 'major' ? 0.22 : 0.16, hayAlza ? el : null);
+    RUTAS.push({ q, el: hayAlza ? el : null });
+    if (agua && agua.some(v => v)) puente(q, el, agua, wd / 2 + ACERA);
+  }
+  function puente(q, el, agua, hw) { // barandas a lado y lado (pasamanos y parales) y pilas dobles cada ~16 m dentro del agua
+    const caja = (x, y, z, sx, sy, sz, ang) => { const g = new THREE.BoxGeometry(sx, sy, sz); g.rotateY(ang); g.translate(x, y, z); const o = g.toNonIndexed(); const b = GP.P.length / 3, p = o.attributes.position.array; for (let i = 0; i < p.length; i++) GP.P.push(p[i]); for (let i = 0; i < p.length / 3; i++) GP.I.push(b + i); };
+    let acc = 0, sigPila = 6, sigPost = 0;
+    for (let i = 0; i < q.length - 1; i++) {
+      if (el[i] < 1.2 && el[i + 1] < 1.2) continue;
+      const a = q[i], b = q[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]); if (L < 1e-3) continue;
+      const dx = (b[0] - a[0]) / L, dz = (b[1] - a[1]) / L, nx = -dz, nz = dx, ang = Math.atan2(dx, dz), ym = Y_ACERA + (el[i] + el[i + 1]) / 2;
+      for (const sd of [-1, 1]) caja((a[0] + b[0]) / 2 + nx * sd * (hw - 0.15), ym + 1.0, (a[1] + b[1]) / 2 + nz * sd * (hw - 0.15), 0.12, 0.1, L + 0.05, ang); // pasamanos
+      while (sigPost < acc + L) { const t = sigPost - acc, x = a[0] + dx * t, z = a[1] + dz * t, yv = Y_ACERA + el[i] + (el[i + 1] - el[i]) * t / L;
+        for (const sd of [-1, 1]) caja(x + nx * sd * (hw - 0.15), yv + 0.5, z + nz * sd * (hw - 0.15), 0.1, 1.0, 0.1, ang); sigPost += 2.0; }
+      while (sigPila < acc + L) { const t = sigPila - acc, x = a[0] + dx * t, z = a[1] + dz * t, yv = Y_VIA + el[i] + (el[i + 1] - el[i]) * t / L - 1.1;
+        if (agua[i] || agua[i + 1]) { for (const sd of [-0.55, 0.55]) caja(x + nx * sd * hw, yv / 2, z + nz * sd * hw, 0.9, yv, 0.9, ang); caja(x, yv - 0.3, z, 0.8, 0.6, hw * 2 - 0.4, ang + Math.PI / 2); }
+        sigPila += 16; }
+      acc += L;
+    }
+  }
+  // alza de la vía en cualquier punto (para subir carros, motos y peatones al puente)
+  if (enAgua) {
+    const CEL = 3, A = new Map(), k = (x, z) => Math.floor(x / CEL) + ',' + Math.floor(z / CEL);
+    for (const R of RUTAS) { if (!R || !R.el) continue; const { q, el } = R;
+      for (let i = 0; i < q.length; i++) { if (el[i] < 0.02) continue; const r = 12; for (let dx = -r; dx <= r; dx += CEL) for (let dz = -r; dz <= r; dz += CEL) { const kk = k(q[i][0] + dx, q[i][1] + dz); if ((A.get(kk) || 0) < el[i]) A.set(kk, el[i]); } } }
+    T3.alzaVia = A.size ? (x, z) => A.get(k(x, z)) || 0 : null;
+    T3.counts.puentes = RUTAS.filter(r => r && r.el).length;
   }
   const mk = (G, mat, arriba, order) => {
     const g = new THREE.BufferGeometry();
@@ -2643,9 +2721,11 @@ function buildRoads(THREE, N) {
   po(mVia, 2); po(mAcera, 1);
   const mRaya = new THREE.MeshBasicMaterial({ color: 0xf2f0e6, side: THREE.DoubleSide }); po(mRaya, 4);
   mk(GA, mAcera, true, 1); mk(GS, mAcera, false, 1); mk(GV, mVia, true, 2); mk(GR, mRaya, true, 3);
+  if (GP.P.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(GP.P, 3)); g.setIndex(GP.I); g.computeVertexNormals();
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ color: 0xb9b6ae, roughness: 0.85 })); m.castShadow = !LIVIANO; m.receiveShadow = !LIVIANO; T3.scene.add(m); } // concreto de los puentes
   T3.counts.vias = N.edges.length;
   T3.viaY = Y_VIA;
-  if (KEN) T3.flujoCarros = crearFlujoCarros(THREE, N, ANCHO, dedupe, Y_VIA); // altura del asfalto: los carros y peatones de la simulación se apoyan en ella
+  if (KEN) T3.flujoCarros = crearFlujoCarros(THREE, N, ANCHO, dedupe, Y_VIA, RUTAS); // altura del asfalto: los carros y peatones de la simulación se apoyan en ella
 }
 function flyTodo(i, instant) {
   const p = POIS[i]; idx = i;
@@ -3170,7 +3250,7 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
   const listoK = () => T3 && T3.ready && T3.net ? Promise.resolve() : new Promise(r => setTimeout(() => r(listoK()), 400));
   const FAUNA_RED = ['tingua', 'garza', 'pato', 'monjita', 'copeton', 'mirla', 'colibri']; // las mueve la red biótica
   let EST = null; // estrategias de la propuesta (data3d/estrategias.js): reemplazan las convenciones P1-P4
-  Promise.all([import('./data3d/giro_sim.js?v=20'), import('./data3d/estrategias.js?v=7'), listoK()])
+  Promise.all([import('./data3d/giro_sim.js?v=21'), import('./data3d/estrategias.js?v=7'), listoK()])
     .then(async ([m, me]) => {
       try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0 }); } catch (e) { console.warn('estrategias:', e); }
       let PLAN = null; // E1 Bavaria Común: plan maestro de la antigua fábrica (data3d/bavaria_plan.js)

@@ -449,7 +449,7 @@ export async function iniciarSimulacion(cfg = {}) {
       for (let k = 0; k < n; k++) {
         const a = s.p[Math.max(0, k - 1)], b = s.p[Math.min(n - 1, k + 1)]; let dx = b[0] - a[0], dy = b[1] - a[1]; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
         const x = s.p[k][0] + OX, z = s.p[k][1] + OZ;
-        pos.push(x - dy * w, Y0 + s.j * 0.01, z + dx * w, x + dy * w, Y0 + s.j * 0.01, z - dx * w);
+        const yA = Y0 + s.j * 0.01 + (T3.alzaVia ? T3.alzaVia(x, z) : 0); pos.push(x - dy * w, yA, z + dx * w, x + dy * w, yA, z - dx * w);
         cI.push(...ci, ...ci); cC.push(...cc, ...cc);
         if (k < n - 1) { const v = base + k * 2; idx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2); }
       }
@@ -518,8 +518,8 @@ export async function iniciarSimulacion(cfg = {}) {
         if (T3.sumoActivo && (a.tipo === 'carro' || a.tipo === 'moto' || a.tipo === 'camion')) continue; // los dibuja la simulación SUMO
         const dx = a.x - (a.px ?? a.x), dy = a.y - (a.py ?? a.y); if (dx * dx + dy * dy > 1e-4) a.rot = Math.atan2(dx, dy); a.px = a.x; a.py = a.y;
         let px = a.x + OX, pz = a.y + OZ;
-        if (VEH && VEH.tipos[a.tipo]) { const r = a.rot || 0, c = VEH.carril(a, a.tipo); px -= Math.cos(r) * c; pz += Math.sin(r) * c; VEH.poner(a, a.tipo, px, Y0, pz, r); } // por su carril, a la derecha
-        d.position.set(px, Y0 + (ALTO[a.tipo] || 0), pz); d.rotation.set(0, a.rot || 0, 0); d.scale.setScalar(ACT[a.tipo].g === 'n' && !FORMA[a.tipo] ? 2.2 : 1); d.updateMatrix();
+        if (VEH && VEH.tipos[a.tipo]) { const r = a.rot || 0, c = VEH.carril(a, a.tipo); px -= Math.cos(r) * c; pz += Math.sin(r) * c; VEH.poner(a, a.tipo, px, Y0 + (T3.alzaVia ? T3.alzaVia(px, pz) : 0), pz, r); } // por su carril, a la derecha
+        d.position.set(px, Y0 + (ALTO[a.tipo] || 0) + (T3.alzaVia && ACT[a.tipo].g === 'h' ? T3.alzaVia(px, pz) : 0), pz); // en los puentes suben con la vía d.rotation.set(0, a.rot || 0, 0); d.scale.setScalar(ACT[a.tipo].g === 'n' && !FORMA[a.tipo] ? 2.2 : 1); d.updateMatrix();
         const i = n[a.tipo] = (n[a.tipo] || 0); m.setMatrixAt(i, d.matrix); n[a.tipo] = i + 1;
       }
       for (const [k, m] of Object.entries(MALLAS)) { m.count = n[k] || 0; m.instanceMatrix.needsUpdate = true; }
