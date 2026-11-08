@@ -2266,6 +2266,7 @@ function updateTraffic(dt) {
   TRAF.vis.n = n;
   if (F && T3.extraCars) T3.extraCars(F); // carros extra de la avenida del humedal (modo pájaro)
   if (F) { F.end((T3.vpos || T3.camera.position).x, (T3.vpos || T3.camera.position).z); n = 0; } // las cajas del tráfico antiguo quedan ocultas
+  if (T3.flujoCarros) { if (!T3.flujoCarros.listo) T3.flujoCarros.precalentar(TRAF); if (TRAF.playing) { TRAF.vis.n = n; T3.flujoCarros.contar(TRAF.vis, dt * (TRAF.vel || 1)); } }
   if (VS) { VS.fin(); n = 0; }
   TRAF.bodies.count = n; TRAF.cabins.count = n; TRAF.wheels.count = n * 4;
   TRAF.bodies.instanceMatrix.needsUpdate = true;
@@ -2510,6 +2511,69 @@ function buildParks(THREE, P) {
   T3.scene.add(pm);
 }
 // vías: cintas continuas con uniones en las curvas (sin cortes ni huecos), calzada de concreto claro, acera, faldón y rayas centrales
+// FLUJO DE CARROS (Kennedy): cada vía se pinta según cuántos carros de la simulación SUMO la están usando
+// (densidad promedio de los últimos ~2 minutos simulados, en carros por km): verde = fluido, amarillo, naranja, rojo = muchos carros
+function crearFlujoCarros(THREE, N, ANCHO, dedupe, yVia) {
+  const E = [], P = [], I = [], vRango = []; // por vía: puntos, largo, ancho; y los vértices de su cinta
+  const CEL = 25, grid = new Map(), clave = (x, z) => Math.floor(x / CEL) + ',' + Math.floor(z / CEL);
+  for (const e of N.edges) {
+    if (!e[1] || e[1].length < 2) continue;
+    const q = dedupe(e[1].map(p => lw(p[0], p[1]))); if (q.length < 2) continue;
+    const wd = (ANCHO[e[0]] || 6) * 0.55, ei = E.length, base = P.length / 3; let L = 0;
+    for (let i = 0; i < q.length; i++) {
+      const a = q[Math.max(0, i - 1)], b = q[Math.min(q.length - 1, i + 1)]; let dx = b[0] - a[0], dz = b[1] - a[1]; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      P.push(q[i][0] - dz * wd / 2, yVia + 0.05, q[i][1] + dx * wd / 2, q[i][0] + dz * wd / 2, yVia + 0.05, q[i][1] - dx * wd / 2);
+      if (i < q.length - 1) {
+        const v = base + i * 2; I.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+        const p0 = q[i], p1 = q[i + 1], sl = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]); L += sl;
+        // tramo en la grilla espacial (todas las celdas que toca)
+        const pasos = Math.max(1, Math.ceil(sl / (CEL * 0.5)));
+        const vistas = new Set(); for (let k = 0; k <= pasos; k++) { const t = k / pasos, kk = clave(p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t); if (vistas.has(kk)) continue; vistas.add(kk); let c = grid.get(kk); if (!c) grid.set(kk, c = []); c.push([ei, p0[0], p0[1], p1[0], p1[1]]); }
+      }
+    }
+    E.push({ L: Math.max(L, 5), w: ANCHO[e[0]] || 6 }); vRango.push([base, q.length * 2]);
+  }
+  const col = new Float32Array(P.length / 3 * 4);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('color', new THREE.BufferAttribute(col, 4)); g.setIndex(I);
+  const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -24 }));
+  mesh.renderOrder = 4; mesh.frustumCulled = false; mesh.visible = false; T3.scene.add(mesh);
+  const acum = new Float32Array(E.length); // carros·segundo con olvido exponencial
+  const TAU = 120; // s simulados: el color muestra el flujo de los últimos ~2 minutos
+  // escala de carros por km de vía (por carril aprox.): verde -> amarillo -> naranja -> rojo -> vino
+  const ESC = [[0, [0.10, 0.72, 0.29]], [7, [0.55, 0.85, 0.20]], [16, [0.98, 0.84, 0.10]], [28, [0.98, 0.50, 0.08]], [45, [0.90, 0.12, 0.10]], [75, [0.55, 0.03, 0.08]]];
+  const colorDe = (d) => { if (d <= ESC[0][0]) return ESC[0][1]; for (let i = 1; i < ESC.length; i++) if (d <= ESC[i][0]) { const [a, ca] = ESC[i - 1], [b, cb] = ESC[i], t = (d - a) / (b - a); return [ca[0] + (cb[0] - ca[0]) * t, ca[1] + (cb[1] - ca[1]) * t, ca[2] + (cb[2] - ca[2]) * t]; } return ESC[ESC.length - 1][1]; };
+  let tPint = 0;
+  const api = { mesh, escala: ESC, get visible() { return mesh.visible; }, set visible(v) { mesh.visible = v; if (v) api.pintar(); } };
+  // cada cuadro: cada carro suma a la vía más cercana (a menos de 9 m)
+  api.contar = (V, dt) => {
+    if (!(dt > 0)) return;
+    const k = Math.exp(-dt / TAU); for (let i = 0; i < acum.length; i++) acum[i] *= k;
+    for (let n = 0; n < V.n; n++) {
+      const x = V.x[n], z = V.z[n], c = grid.get(clave(x, z)); if (!c) continue;
+      let mejor = -1, md = 81;
+      for (const [ei, ax, az, bx, bz] of c) { const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1e-9, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)), ex = x - ax - t * dx, ez = z - az - t * dz, d = ex * ex + ez * ez; if (d < md) { md = d; mejor = ei; } }
+      if (mejor >= 0) acum[mejor] += dt;
+    }
+    if (mesh.visible && (tPint -= dt) <= 0) { tPint = 1.5; api.pintar(); }
+  };
+  // al abrir: se recorren los 2 minutos de simulación alrededor de la hora de inicio, así la capa ya sale con color
+  api.precalentar = (TR) => {
+    const V = { n: 0, x: new Float32Array(TR.maxi), z: new Float32Array(TR.maxi) }; let usados = 0;
+    const t0 = Math.floor(TR.t);
+    for (let t = t0 - TAU; t <= t0 + TAU && usados < TAU; t++) { const S = TR.steps[(t + TR.NS) % TR.NS]; if (!S) continue;
+      V.n = Math.min(S.ids.length, TR.maxi); for (let i = 0; i < V.n; i++) { V.x[i] = S.xs[i] - LC.x; V.z[i] = LC.y - S.ys[i]; } api.contar(V, 1); usados++; }
+    api.listo = usados > 10; if (mesh.visible) api.pintar(); return usados;
+  };
+  api.pintar = () => {
+    for (let ei = 0; ei < E.length; ei++) {
+      const carril = Math.max(1, Math.round(E[ei].w / 3.5)), dens = acum[ei] / TAU / (E[ei].L / 1000) / carril * 2; // carros promedio en la vía / km / carril (x2: ambos sentidos comparten la cinta)
+      const c = colorDe(dens), al = acum[ei] > 0.5 ? 0.9 : 0.0, [b0, nv] = vRango[ei];
+      for (let v = b0; v < b0 + nv; v++) { const o = v * 4; col[o] = c[0]; col[o + 1] = c[1]; col[o + 2] = c[2]; col[o + 3] = al; }
+    }
+    g.attributes.color.needsUpdate = true;
+  };
+  return api;
+}
 function buildRoads(THREE, N) {
   const ANCHO = { major: 15, mid: 10, local: 6 }, ACERA = 2.4;
   const Y_ACERA = 0.55, Y_VIA = 0.62, Y_RAYA = 0.64, Y_BASE = -0.3, VT = 5;
@@ -2580,7 +2644,8 @@ function buildRoads(THREE, N) {
   const mRaya = new THREE.MeshBasicMaterial({ color: 0xf2f0e6, side: THREE.DoubleSide }); po(mRaya, 4);
   mk(GA, mAcera, true, 1); mk(GS, mAcera, false, 1); mk(GV, mVia, true, 2); mk(GR, mRaya, true, 3);
   T3.counts.vias = N.edges.length;
-  T3.viaY = Y_VIA; // altura del asfalto: los carros y peatones de la simulación se apoyan en ella
+  T3.viaY = Y_VIA;
+  if (KEN) T3.flujoCarros = crearFlujoCarros(THREE, N, ANCHO, dedupe, Y_VIA); // altura del asfalto: los carros y peatones de la simulación se apoyan en ella
 }
 function flyTodo(i, instant) {
   const p = POIS[i]; idx = i;
@@ -3105,7 +3170,7 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
   const listoK = () => T3 && T3.ready && T3.net ? Promise.resolve() : new Promise(r => setTimeout(() => r(listoK()), 400));
   const FAUNA_RED = ['tingua', 'garza', 'pato', 'monjita', 'copeton', 'mirla', 'colibri']; // las mueve la red biótica
   let EST = null; // estrategias de la propuesta (data3d/estrategias.js): reemplazan las convenciones P1-P4
-  Promise.all([import('./data3d/giro_sim.js?v=19'), import('./data3d/estrategias.js?v=7'), listoK()])
+  Promise.all([import('./data3d/giro_sim.js?v=20'), import('./data3d/estrategias.js?v=7'), listoK()])
     .then(async ([m, me]) => {
       try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0 }); } catch (e) { console.warn('estrategias:', e); }
       let PLAN = null; // E1 Bavaria Común: plan maestro de la antigua fábrica (data3d/bavaria_plan.js)

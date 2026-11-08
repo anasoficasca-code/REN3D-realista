@@ -553,6 +553,15 @@ export async function iniciarSimulacion(cfg = {}) {
     izq.querySelector('.gs-ley').insertAdjacentHTML('afterend', `<div class="gs-sub">FLUJO DE AGENTES <span>conteo por tramo</span></div>
       <div class="gs-fila gs-fila3" id="gs-flujo"><button data-f="p">Peatones</button><button data-f="v">Vehículos</button><button data-f="" class="on">Apagar</button></div>`);
     izq.querySelectorAll('#gs-flujo button').forEach(b => b.onclick = () => { st0.flujo = b.dataset.f; izq.querySelectorAll('#gs-flujo button').forEach(x => x.classList.toggle('on', x === b)); flujo3D(); });
+    // ---- flujo de carros de la simulación SUMO (index.html, crearFlujoCarros): más carros en la vía = más rojo ----
+    if (T3.flujoCarros) {
+      const FC = T3.flujoCarros, grad = FC.escala.map(([d, c]) => `rgb(${c.map(x => Math.round(x * 255)).join(',')}) ${Math.round(d / 75 * 100)}%`).join(',');
+      izq.querySelector('#gs-flujo').insertAdjacentHTML('afterend', `<div class="gs-sub">FLUJO DE CARROS <span>simulación SUMO · carros/km</span></div>
+        <div class="gs-fila" style="grid-template-columns:1fr 1fr" id="gs-fc"><button data-v="1" class="on">Ver</button><button data-v="">Apagar</button></div>
+        <div class="gs-ley"><span>pocos</span><i style="background:linear-gradient(90deg,${grad})"></i><span>muchos</span></div>`);
+      izq.querySelectorAll('#gs-fc button').forEach(b => b.onclick = () => { FC.visible = !!b.dataset.v; izq.querySelectorAll('#gs-fc button').forEach(x => x.classList.toggle('on', x === b)); });
+      FC.visible = true; // prendida al abrir
+    }
 
     // ---- clic en un agente o en una convención: ficha con su comportamiento, sus interacciones y su ruta ----
     const REGLA = {
