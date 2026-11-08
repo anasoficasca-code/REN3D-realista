@@ -1786,7 +1786,7 @@ function buildChunks(THREE, B) {
   if (torresFoto.length) { // torres de ladrillo con balcones-huerta (data3d/torres_balcones.js) y huerta en la terraza
     const L = torresFoto.map(b => ({ W: b.pts.slice(0, -1).map(p => lw(p[0], p[1])), h: b.h, y0: 0.3 }));
     for (const t of L) techosHuerta.push({ W: t.W, y: t.h - 0.45 });
-    if (!pTorres) pTorres = import('./data3d/torres_balcones.js?v=2').then(m => (T3.torres = m.crearTorres(T3.THREE, T3, { liviano: LIVIANO }))).catch(e => { console.warn('torres con balcones:', e); return null; });
+    if (!pTorres) pTorres = import('./data3d/torres_balcones.js?v=3').then(m => (T3.torres = m.crearTorres(T3.THREE, T3, { liviano: LIVIANO }))).catch(e => { console.warn('torres con balcones:', e); return null; });
     pTorres.then(Tt => { if (Tt) Tt.agregar(L); });
   }
   agregarHuertasTecho(techosHuerta);
