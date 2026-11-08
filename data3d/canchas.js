@@ -13,15 +13,15 @@ export async function iniciarCanchas({ THREE, T3, OX, OZ, Y0 = 2.0, movil = fals
 
   // ---------- texturas de superficie dibujadas una vez (lienzo 2D) ----------
   const grano = (g, w, h, a, n = 9000) => { for (let i = 0; i < n; i++) { const v = Math.random(); g.fillStyle = `rgba(${v > 0.5 ? '255,255,255' : '0,0,0'},${a * Math.random()})`; g.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2); } };
-  function lienzo(w, h, f) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); f(g, w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = ANIS; return t; }
-  const linea = (g, w) => { g.strokeStyle = 'rgba(250,250,245,.92)'; g.lineWidth = w; g.lineCap = 'butt'; };
+  function lienzo(w, h, f) { const c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d'); f(g, w, h); g.globalCompositeOperation = 'saturation'; g.fillStyle = 'rgba(128,128,128,.35)'; g.fillRect(0, 0, w, h); g.globalCompositeOperation = 'source-over'; /* colores de cancha gastada al sol, no fosforescentes */ const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = ANIS; return t; }
+  const linea = (g, w) => { g.strokeStyle = 'rgba(236,236,228,.7)'; g.lineWidth = w; g.lineCap = 'butt'; };
   // fútbol 11 sobre grama sintética (proporción 105 x 68)
   function futbol(g, W, H, sintetica) {
     const franjas = 12;
-    for (let i = 0; i < franjas; i++) { g.fillStyle = sintetica ? (i % 2 ? '#467f3e' : '#508a46') : (i % 2 ? '#5d8a3e' : '#6a9746'); /* grama sintética real: verde algo apagado, no de juguete */ g.fillRect(i * W / franjas, 0, W / franjas + 1, H); }
+    for (let i = 0; i < franjas; i++) { g.fillStyle = sintetica ? (i % 2 ? '#56704a' : '#5d7850') : (i % 2 ? '#5d8a3e' : '#6a9746'); /* grama sintética real: verde algo apagado, no de juguete */ g.fillRect(i * W / franjas, 0, W / franjas + 1, H); }
     grano(g, W, H, 0.06, 14000);
     const m = W * 0.035, x0 = m, y0 = m, x1 = W - m, y1 = H - m, fw = x1 - x0, fh = y1 - y0, u = fw / 105;
-    linea(g, Math.max(2, u * 0.12 * 10));
+    linea(g, Math.max(1.2, u * 0.12));
     g.strokeRect(x0, y0, fw, fh);
     g.beginPath(); g.moveTo(W / 2, y0); g.lineTo(W / 2, y1); g.stroke();
     g.beginPath(); g.arc(W / 2, H / 2, 9.15 * u, 0, Math.PI * 2); g.stroke();
@@ -41,36 +41,36 @@ export async function iniciarCanchas({ THREE, T3, OX, OZ, Y0 = 2.0, movil = fals
     g.fillStyle = fondo; g.fillRect(x0, y0, fw, fh); grano(g, W, H, 0.05, 5000);
     // desgaste: manchas más claras en el centro y en las áreas (donde más se juega)
     const gr = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, fw * 0.55); gr.addColorStop(0, 'rgba(255,255,255,.10)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(x0, y0, fw, fh);
-    g.strokeStyle = lineas; g.lineWidth = Math.max(2, u * 0.08 * 10);
+    g.strokeStyle = lineas; g.lineWidth = Math.max(1.2, u * 0.08);
     g.strokeRect(x0, y0, fw, fh);
     g.beginPath(); g.moveTo(W / 2, y0); g.lineTo(W / 2, y0 + fh); g.stroke();
     g.beginPath(); g.arc(W / 2, H / 2, 1.8 * u, 0, Math.PI * 2); g.stroke();
-    if (futsal) { g.strokeStyle = 'rgba(250,250,245,.9)'; for (const s of [0, 1]) { const xa = s ? x0 + fw : x0, d = s ? -1 : 1; g.beginPath(); g.arc(xa, H / 2 - 1.58 * u, 6 * u, s ? Math.PI : -Math.PI / 2, s ? Math.PI * 1.5 : 0); g.stroke(); g.beginPath(); g.moveTo(xa + d * 6 * u, H / 2 - 1.58 * u); g.lineTo(xa + d * 6 * u, H / 2 + 1.58 * u); g.stroke(); g.beginPath(); g.arc(xa, H / 2 + 1.58 * u, 6 * u, s ? Math.PI / 2 : 0, s ? Math.PI : Math.PI / 2); g.stroke(); } }
-    if (basket) { g.strokeStyle = basket; for (const s of [0, 1]) { const xa = s ? x0 + fw : x0, d = s ? -1 : 1; g.fillStyle = 'rgba(200,70,50,.55)'; g.fillRect(Math.min(xa, xa + d * 5.8 * u), H / 2 - 2.45 * u, 5.8 * u, 4.9 * u); g.strokeRect(Math.min(xa, xa + d * 5.8 * u), H / 2 - 2.45 * u, 5.8 * u, 4.9 * u); g.beginPath(); g.arc(xa + d * 5.8 * u, H / 2, 1.8 * u, 0, 7); g.stroke(); g.beginPath(); g.arc(xa + d * 1.575 * u, H / 2, 6.75 * u, s ? Math.PI / 2 : -Math.PI / 2, s ? Math.PI * 1.5 : Math.PI / 2); g.stroke(); } }
-    if (voley) { g.strokeStyle = 'rgba(250,250,245,.9)'; g.beginPath(); g.moveTo(W / 2 - 3 * u, y0); g.lineTo(W / 2 - 3 * u, y0 + fh); g.moveTo(W / 2 + 3 * u, y0); g.lineTo(W / 2 + 3 * u, y0 + fh); g.stroke(); }
+    if (futsal) { g.strokeStyle = 'rgba(236,236,228,.7)'; for (const s of [0, 1]) { const xa = s ? x0 + fw : x0, d = s ? -1 : 1; g.beginPath(); g.arc(xa, H / 2 - 1.58 * u, 6 * u, s ? Math.PI : -Math.PI / 2, s ? Math.PI * 1.5 : 0); g.stroke(); g.beginPath(); g.moveTo(xa + d * 6 * u, H / 2 - 1.58 * u); g.lineTo(xa + d * 6 * u, H / 2 + 1.58 * u); g.stroke(); g.beginPath(); g.arc(xa, H / 2 + 1.58 * u, 6 * u, s ? Math.PI / 2 : 0, s ? Math.PI : Math.PI / 2); g.stroke(); } }
+    if (basket) { g.strokeStyle = basket; for (const s of [0, 1]) { const xa = s ? x0 + fw : x0, d = s ? -1 : 1; g.fillStyle = 'rgba(150,90,70,.3)'; g.fillRect(Math.min(xa, xa + d * 5.8 * u), H / 2 - 2.45 * u, 5.8 * u, 4.9 * u); g.strokeRect(Math.min(xa, xa + d * 5.8 * u), H / 2 - 2.45 * u, 5.8 * u, 4.9 * u); g.beginPath(); g.arc(xa + d * 5.8 * u, H / 2, 1.8 * u, 0, 7); g.stroke(); g.beginPath(); g.arc(xa + d * 1.575 * u, H / 2, 6.75 * u, s ? Math.PI / 2 : -Math.PI / 2, s ? Math.PI * 1.5 : Math.PI / 2); g.stroke(); } }
+    if (voley) { g.strokeStyle = 'rgba(236,236,228,.7)'; g.beginPath(); g.moveTo(W / 2 - 3 * u, y0); g.lineTo(W / 2 - 3 * u, y0 + fh); g.moveTo(W / 2 + 3 * u, y0); g.lineTo(W / 2 + 3 * u, y0 + fh); g.stroke(); }
   }
   function tenis(g, W, H) {
-    g.fillStyle = '#3d7a55'; g.fillRect(0, 0, W, H); grano(g, W, H, 0.05);
+    g.fillStyle = '#5a6e5c'; g.fillRect(0, 0, W, H); grano(g, W, H, 0.05);
     const m = W * 0.12, x0 = m, y0 = H * 0.16, fw = W - 2 * m, fh = H - 0.32 * H, u = fw / 23.77;
-    g.fillStyle = '#2f6aa3'; g.fillRect(x0, y0, fw, fh);
-    linea(g, Math.max(2, u * 0.6)); g.strokeRect(x0, y0, fw, fh);
+    g.fillStyle = '#5a6b7a'; g.fillRect(x0, y0, fw, fh);
+    linea(g, Math.max(1.2, u * 0.08)); g.strokeRect(x0, y0, fw, fh);
     const s = fh * (8.23 / 10.97), ys = H / 2 - s / 2; g.beginPath(); g.moveTo(x0, ys); g.lineTo(x0 + fw, ys); g.moveTo(x0, ys + s); g.lineTo(x0 + fw, ys + s);
     g.moveTo(W / 2 - 6.4 * u, ys); g.lineTo(W / 2 - 6.4 * u, ys + s); g.moveTo(W / 2 + 6.4 * u, ys); g.lineTo(W / 2 + 6.4 * u, ys + s); g.moveTo(W / 2 - 6.4 * u, H / 2); g.lineTo(W / 2 + 6.4 * u, H / 2); g.stroke();
   }
   function pista(g, W, H) {
-    g.fillStyle = '#b3533c'; g.fillRect(0, 0, W, H); grano(g, W, H, 0.08);
+    g.fillStyle = '#946253'; g.fillRect(0, 0, W, H); grano(g, W, H, 0.08);
     const r = H * 0.5, carr = 6, lw = r * 0.09;
-    g.strokeStyle = 'rgba(250,245,240,.85)'; g.lineWidth = 2;
+    g.strokeStyle = 'rgba(236,232,226,.6)'; g.lineWidth = 1.2;
     for (let k = 0; k <= carr; k++) { const rr = r - k * lw; g.beginPath(); g.moveTo(r, H / 2 - rr); g.lineTo(W - r, H / 2 - rr); g.arc(W - r, H / 2, rr, -Math.PI / 2, Math.PI / 2); g.lineTo(r, H / 2 + rr); g.arc(r, H / 2, rr, Math.PI / 2, Math.PI * 1.5); g.stroke(); }
-    const ri = r - carr * lw; g.fillStyle = '#4c9446'; g.beginPath(); g.moveTo(r, H / 2 - ri); g.lineTo(W - r, H / 2 - ri); g.arc(W - r, H / 2, ri, -Math.PI / 2, Math.PI / 2); g.lineTo(r, H / 2 + ri); g.arc(r, H / 2, ri, Math.PI / 2, Math.PI * 1.5); g.fill(); grano(g, W, H, 0.03, 3000);
+    const ri = r - carr * lw; g.fillStyle = '#5d7850'; g.beginPath(); g.moveTo(r, H / 2 - ri); g.lineTo(W - r, H / 2 - ri); g.arc(W - r, H / 2, ri, -Math.PI / 2, Math.PI / 2); g.lineTo(r, H / 2 + ri); g.arc(r, H / 2, ri, Math.PI / 2, Math.PI * 1.5); g.fill(); grano(g, W, H, 0.03, 3000);
   }
   const TX = {
     futbolG: () => lienzo(1024, 664, (g, w, h) => futbol(g, w, h, true)),
-    futbolC: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#4f6f8f', borde: '#8c8a84', lineas: 'rgba(250,250,245,.9)', futsal: true })),
-    multiple: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#2f6f8e', borde: '#93918b', lineas: 'rgba(250,250,245,.9)', futsal: true, basket: 'rgba(250,210,70,.95)' })),
-    multipleV: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#3f7f52', borde: '#93918b', lineas: 'rgba(250,250,245,.9)', futsal: true, basket: 'rgba(250,210,70,.95)' })),
-    baloncesto: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#b8623f', borde: '#9a958c', lineas: 'rgba(250,250,245,.92)', basket: 'rgba(250,250,245,.92)' })),
-    voleibol: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#c27a3f', borde: '#9a958c', lineas: 'rgba(250,250,245,.92)', voley: true })),
+    futbolC: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#5c6a76', borde: '#8c8a84', lineas: 'rgba(236,236,228,.7)', futsal: true })),
+    multiple: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#566d78', borde: '#93918b', lineas: 'rgba(236,236,228,.7)', futsal: true, basket: 'rgba(214,190,120,.65)' })),
+    multipleV: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#5b6e5c', borde: '#93918b', lineas: 'rgba(236,236,228,.7)', futsal: true, basket: 'rgba(214,190,120,.65)' })),
+    baloncesto: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#8f6a58', borde: '#9a958c', lineas: 'rgba(236,236,228,.7)', basket: 'rgba(236,236,228,.7)' })),
+    voleibol: () => lienzo(768, 420, (g, w, h) => placa(g, w, h, { fondo: '#977459', borde: '#9a958c', lineas: 'rgba(236,236,228,.7)', voley: true })),
     tenis: () => lienzo(768, 420, tenis),
     pista: () => lienzo(1024, 512, pista)
   };
