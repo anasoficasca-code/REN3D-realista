@@ -485,7 +485,7 @@ export async function iniciarSimulacion(cfg = {}) {
     }
     // ---- vehículos realistas: reemplazan las cajas de carros, motos, camiones y bicis (las cajas siguen guardando la posición para las luces de noche) ----
     try {
-      const mv = await import('./vehiculos.js?v=1');
+      const mv = await import('./vehiculos.js?v=2');
       VEH = mv.crearVehiculos({ T3, cuantos, movil: !!T3.movil });
       VEH.tipos = { carro: 1, moto: 1, camion: 1, bici: 1 };
       for (const k of Object.keys(VEH.tipos)) if (MALLAS[k]) MALLAS[k].visible = false;
@@ -515,6 +515,7 @@ export async function iniciarSimulacion(cfg = {}) {
       for (const a of A) {
         const m = MALLAS[a.tipo]; if (!m || a.vis === false || a.x === undefined) { if (a.vis !== false && a.x !== undefined) activos[a.tipo] = (activos[a.tipo] || 0) + 1; continue; }
         activos[a.tipo] = (activos[a.tipo] || 0) + 1;
+        if (T3.sumoActivo && (a.tipo === 'carro' || a.tipo === 'moto' || a.tipo === 'camion')) continue; // los dibuja la simulación SUMO
         const dx = a.x - (a.px ?? a.x), dy = a.y - (a.py ?? a.y); if (dx * dx + dy * dy > 1e-4) a.rot = Math.atan2(dx, dy); a.px = a.x; a.py = a.y;
         let px = a.x + OX, pz = a.y + OZ;
         if (VEH && VEH.tipos[a.tipo]) { const r = a.rot || 0, c = VEH.carril(a, a.tipo); px -= Math.cos(r) * c; pz += Math.sin(r) * c; VEH.poner(a, a.tipo, px, Y0, pz, r); } // por su carril, a la derecha

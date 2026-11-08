@@ -302,7 +302,7 @@ const TIPOS = {
 };
 const SOMBRA = { carro: [2.5, 5.4], camion: [3.2, 8.8], moto: [1.0, 2.4], bici: [0.8, 2.1] };
 
-export function crearVehiculos({ T3, cuantos, movil }) {
+export function crearVehiculos({ T3, cuantos, movil, maxDist = Infinity }) {
   const env = T3.env || T3.scene.environment || null;
   const fis = !movil;
   const M = {
@@ -333,7 +333,7 @@ export function crearVehiculos({ T3, cuantos, movil }) {
     for (const [nombre] of def.v) {
       const g = GEO[nombre]();
       const lado = (G, caps) => Object.entries(G).map(([mat, geo]) => ({ mat, m: mk(geo, M[mat], caps, mat !== 'placa' && mat !== 'luces', mat === 'pintura') }));
-      V[nombre] = { cerca: lado(g.cerca, Math.min(cap, movil ? 60 : 260)), lejos: lado(g.lejos, cap), nc: 0, nl: 0, capC: Math.min(cap, movil ? 60 : 260) };
+      V[nombre] = { cerca: lado(g.cerca, Math.min(cap, movil ? 60 : 260)), lejos: lado(g.lejos, cap), nc: 0, nl: 0, capC: Math.min(cap, movil ? 60 : 260), capL: cap };
     }
   }
   // sombra de contacto difusa bajo cada vehículo: lo asienta sobre el asfalto de la foto
@@ -364,6 +364,7 @@ export function crearVehiculos({ T3, cuantos, movil }) {
       const o = V[a._vv]; if (!o) return;
       d.position.set(x, y, z); d.rotation.set(0, rumbo, 0); d.updateMatrix();
       const dist = Math.hypot(x - cam.x, z - cam.z, y - cam.y), cerca = dist < CERCA && o.nc < o.capC;
+      if (dist > maxDist || (!cerca && o.nl >= o.capL) || nb >= blob.instanceMatrix.count) return; // muy lejos o sin cupo: no se dibuja
       const lista = cerca ? o.cerca : o.lejos, i = cerca ? o.nc++ : o.nl++;
       col.setHex(a._vc);
       for (const p of lista) { p.m.setMatrixAt(i, d.matrix); if (p.mat === 'pintura') p.m.setColorAt(i, col); }
