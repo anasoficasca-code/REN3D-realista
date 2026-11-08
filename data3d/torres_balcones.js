@@ -53,7 +53,11 @@ export function crearTorres(THREE, T3, opt = {}) {
     concreto: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, side: THREE.DoubleSide }),
     baranda: new THREE.MeshStandardMaterial({ map: barrotes, alphaTest: 0.5, side: THREE.DoubleSide, metalness: 0.6, roughness: 0.45, envMap: env }),
     partes: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 }),
-    plantas: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 })
+    plantas: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 }),
+    // torres hidropónicas: plástico blanco brillante, tanque transparente y lámpara LED
+    blanco: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.25, metalness: 0.0, envMap: env, envMapIntensity: 0.8 }),
+    tanque: new THREE.MeshPhysicalMaterial({ color: 0xd8e8ee, roughness: 0.05, metalness: 0, transparent: true, opacity: 0.32, envMap: env, envMapIntensity: 1.3, depthWrite: false }),
+    led: new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6e6, emissiveIntensity: 2.2, roughness: 0.3 })
   };
 
   /* ---------- utilidades ---------- */
@@ -64,6 +68,35 @@ export function crearTorres(THREE, T3, opt = {}) {
   const MATA = (() => { const g = new THREE.IcosahedronGeometry(1, 1); const p = g.attributes.position, nn = new Float32Array(p.count * 3);
     for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1, k = 0.82 + 0.18 * Math.sin(x * 9.1 + z * 7.3) * Math.cos(y * 5.7); p.setXYZ(i, x * k, y * k, z * k); nn[i * 3] = x / l; nn[i * 3 + 1] = y / l; nn[i * 3 + 2] = z / l; }
     g.setAttribute('normal', new THREE.BufferAttribute(nn, 3)); return g; })();
+  const HOJA = (() => { const g = new THREE.IcosahedronGeometry(1, 0); const p = g.attributes.position, nn = new Float32Array(p.count * 3);
+    for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i), z = p.getZ(i), l = Math.hypot(x, y, z) || 1; nn[i * 3] = x / l; nn[i * 3 + 1] = y / l; nn[i * 3 + 2] = z / l; }
+    g.setAttribute('normal', new THREE.BufferAttribute(nn, 3)); return g; })();
+  const LECHUGAS = [[0.36, 0.62, 0.2], [0.3, 0.55, 0.16], [0.42, 0.68, 0.24], [0.22, 0.45, 0.13], [0.4, 0.2, 0.24], [0.26, 0.5, 0.2]]; // crespa, batavia, romana, albahaca, morada, cilantro
+  // TORRE HIDROPÓNICA (como la foto de referencia): tanque transparente con agua, tapa blanca, columna blanca con bolsillos
+  // en espiral de los que salen lechugas y hierbas, y lámpara LED en un marco blanco por encima
+  function torreHidro(B, x, y, z, giro, PL) {
+    const BL = [0.95, 0.95, 0.94];
+    B.tanque.push(prep(new THREE.BoxGeometry(0.46, 0.38, 0.46).translate(x, y + 0.19, z)));
+    B.partes.push(prep(new THREE.BoxGeometry(0.42, 0.24, 0.42).translate(x, y + 0.13, z), [0.08, 0.12, 0.14])); // agua con nutrientes
+    B.partes.push(prep(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 10).translate(x + 0.08, y + 0.1, z - 0.06), [0.12, 0.12, 0.13])); // bomba
+    B.blanco.push(prep(new THREE.BoxGeometry(0.5, 0.06, 0.5).translate(x, y + 0.41, z), BL)); // tapa
+    const H = 1.45, R = 0.085; B.blanco.push(prep(new THREE.CylinderGeometry(R, R * 1.15, H, 16).translate(x, y + 0.44 + H / 2, z), BL)); // columna
+    const NIV = 7, POR = 4;
+    for (let k = 0; k < NIV; k++) for (let j = 0; j < POR; j++) {
+      const a = giro + j / POR * Math.PI * 2 + k * 0.6, yk = y + 0.62 + k * (H - 0.3) / (NIV - 1), dx = Math.cos(a), dz = Math.sin(a);
+      const gb = new THREE.CylinderGeometry(0.035, 0.03, 0.09, 8); gb.rotateZ(-0.9); gb.rotateY(-a); gb.translate(x + dx * (R + 0.03), yk, z + dz * (R + 0.03)); B.blanco.push(prep(gb, BL)); // bolsillo
+      const c = LECHUGAS[Math.floor(rnd() * LECHUGAS.length)], r = 0.08 + rnd() * 0.05, k2 = 0.85 + rnd() * 0.3;
+      PL.push(prep(HOJA.clone().scale(r * 1.15, r * 0.95, r * 1.15).translate(x + dx * (R + 0.11), yk + 0.06, z + dz * (R + 0.11)), [c[0] * k2, c[1] * k2, c[2] * k2]));
+      if (rnd() < 0.5) PL.push(prep(HOJA.clone().scale(r * 0.8, r * 1.1, r * 0.8).translate(x + dx * (R + 0.16), yk + 0.12, z + dz * (R + 0.16)), [c[0] * k2 * 1.1, c[1] * k2 * 1.1, c[2] * k2]));
+    }
+    PL.push(prep(HOJA.clone().scale(0.13, 0.12, 0.13).translate(x, y + 0.44 + H + 0.08, z), LECHUGAS[0])); // corona
+    // marco y lámpara LED
+    const px = x - Math.cos(giro) * 0.2, pz = z - Math.sin(giro) * 0.2, ytop = y + 0.44 + H + 0.42;
+    B.blanco.push(prep(new THREE.BoxGeometry(0.035, ytop - y - 0.44, 0.035).translate(px, (ytop + y + 0.44) / 2, pz), BL));
+    const brazo = new THREE.BoxGeometry(0.035, 0.035, 0.24); brazo.lookAt(new THREE.Vector3(x - px, 0, z - pz)); brazo.translate((x + px) / 2, ytop, (z + pz) / 2); B.blanco.push(prep(brazo, BL));
+    B.blanco.push(prep(new THREE.CylinderGeometry(0.15, 0.15, 0.05, 20).translate(x, ytop - 0.01, z), BL));
+    B.led.push(prep(new THREE.CylinderGeometry(0.12, 0.12, 0.012, 20).translate(x, ytop - 0.04, z)));
+  }
   // cuadrilátero vertical de fachada con la celda (col, fila) del atlas
   const quad = (Pa, a, b, y0, y1, col, fila, u0 = 0, u1 = 1) => {
     const g = new THREE.BufferGeometry();
@@ -77,7 +110,7 @@ export function crearTorres(THREE, T3, opt = {}) {
   api.actualizar = (cam) => { for (const c of cercanas) { const v = Math.hypot(c.x - cam.position.x, c.z - cam.position.z, c.y - cam.position.y) < CERCA; if (c.m.visible !== v) c.m.visible = v; } };
 
   api.agregar = (lista) => {
-    const B = { fachada: [], concreto: [], baranda: [], partes: [] };
+    const B = { fachada: [], concreto: [], baranda: [], partes: [], blanco: [], tanque: [], led: [] };
     for (const T of lista) {
       const W = T.W, n = W.length, y0 = T.y0, h = T.h, pisos = Math.max(1, Math.round((h - y0) / PISO)), hp = (h - y0) / pisos;
       let area = 0; for (let i = 0; i < n; i++) { const a = W[i], b = W[(i + 1) % n]; area += a[0] * b[1] - b[0] * a[1]; }
@@ -147,6 +180,10 @@ export function crearTorres(THREE, T3, opt = {}) {
             const pe = P2W((rnd() < 0.5 ? -1 : 1) * (w / 2 - 0.35), 0.4);
             B.partes.push(prep(new THREE.CylinderGeometry(0.24, 0.18, 0.5, 12).translate(pe[0], yb + 0.25, pe[1]), TER));
             PL.push(prep(MATA.clone().scale(0.3, 0.6, 0.3).translate(pe[0], yb + 0.95, pe[1]), [0.16, 0.33, 0.1]));
+            // torres hidropónicas: dos por balcón (una en los angostos), entre la puerta-ventana y las jardineras
+            const lado = pe[0] === P2W(-(w / 2 - 0.35), 0.4)[0] ? -1 : 1; // lado de la matera, para no chocar con ella
+            const posT = w >= 2.6 ? [-w * 0.2, w * 0.2] : [-lado * w * 0.12];
+            for (const t of posT) { const q = P2W(t, 0.78); torreHidro(B, q[0], yb, q[1], Math.atan2(nz, nx), PL); api.hidro = (api.hidro || 0) + 1; }
           }
         }
       }
