@@ -4,7 +4,7 @@
    E8 Red distribuida de producción alimentaria (huertas en lotes baldíos, en cubiertas de vivienda en altura y en viviendas, del shapefile de lotes).
    E1 Bavaria Común la dibuja data3d/bavaria_plan.js. E2, E6, E7 y E9 no tienen una ubicación única: desde la leyenda se abre su
    red de actores. Las capas sobre techos (cubiertas, viviendas) se pintan a la altura de cada edificio; las demás a ras del suelo. */
-export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
+export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0, dentro = null, movil = false }) {
   const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=5');
   const esc = D.escala || 0.5, grupo = new THREE.Group(); grupo.name = 'estrategias'; T3.scene.add(grupo);
   const CAPA = {};
@@ -13,6 +13,7 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
   const armar = (e, gr) => {
     for (const c of e.capas) {
       const P = [], I = [], L = []; let vc = 0;
+      const hidro = /cubiertas/i.test(c.n); // E8 en cubiertas: de lejos, surcos verdes; de cerca, las instalaciones hidropónicas (data3d/huertas_hidro.js)
       const anillo = (flat, y) => {
         const W = W2(flat), n = W.length;
         let tri = []; try { tri = THREE.ShapeUtils.triangulateShape(W.map(q => new THREE.Vector2(q[0], q[1])), []); } catch (er) { return; }
@@ -29,12 +30,31 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
       for (const t of c.techos || []) anillo(t.slice(0, -1), t[t.length - 1] / 10 + 0.3); // sobre el techo de cada edificio del lote
       const col = new THREE.Color(c.c), techo = (c.techos || []).length > 0;
       const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setIndex(I);
-      const relleno = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: techo ? 0.55 : 0.4, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+      if (hidro) { const U = []; for (let k = 0; k < P.length; k += 3) U.push(P[k] / 3, P[k + 2] / 3); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.computeVertexNormals(); }
+      const relleno = new THREE.Mesh(g, hidro ? new THREE.MeshLambertMaterial({ map: surcos(), side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 })
+        : new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: techo ? 0.55 : 0.4, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
       relleno.renderOrder = 4; relleno.frustumCulled = false;
       const gl = new THREE.BufferGeometry(); gl.setAttribute('position', new THREE.Float32BufferAttribute(L, 3));
       const borde = new THREE.LineSegments(gl, new THREE.LineBasicMaterial({ color: col.clone().multiplyScalar(techo ? 0.75 : 1), transparent: true, opacity: 0.95, depthWrite: false }));
       borde.renderOrder = 5; borde.frustumCulled = false; gr.add(relleno, borde);
     }
+  };
+  // surcos de cultivo (vistos desde arriba) para las cubiertas con huerta: verde de hortaliza con la línea clara de los tubos
+  let texSurcos = null;
+  function surcos() {
+    if (texSurcos) return texSurcos;
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64; const g = cv.getContext('2d');
+    g.fillStyle = '#c4c0b6'; g.fillRect(0, 0, 64, 64); // losa de concreto clara (de cerca se ven encima los racks hidropónicos)
+    for (let i = 0; i < 300; i++) { g.fillStyle = 'rgba(0,0,0,' + (0.05 * Math.random()) + ')'; g.fillRect(Math.random() * 64, Math.random() * 64, 2, 2); }
+    for (let y = 4; y < 64; y += 16) { g.fillStyle = 'rgba(96,150,64,.22)'; g.fillRect(4, y, 56, 6); for (let x = 6; x < 58; x += 4) { g.fillStyle = ['rgba(130,185,80,.35)', 'rgba(90,140,55,.35)', 'rgba(140,70,90,.25)'][(x + y) % 3]; g.beginPath(); g.arc(x, y + 3, 1.8, 0, 7); g.fill(); } }
+    texSurcos = new THREE.CanvasTexture(cv); texSurcos.wrapS = texSurcos.wrapT = THREE.RepeatWrapping; texSurcos.colorSpace = THREE.SRGBColorSpace; return texSurcos;
+  }
+  let HIDRO = null, HIDRO_P = null; // huertas hidropónicas de E8 (se arman la primera vez que se prende E8)
+  const hidroponia = (on) => {
+    if (HIDRO) { HIDRO.ver(on); return; } if (!on) return;
+    if (!HIDRO_P) HIDRO_P = import('./huertas_hidro.js?v=1').then(m => { const e = D.estrategias.find(x => x.id === 'E8'), c = e && e.capas.find(x => /cubiertas/i.test(x.n)); if (!c) return null;
+      const techos = (c.techos || []).map(t => ({ W: W2(t.slice(0, -1)), h: t[t.length - 1] / 10 })).filter(t => !dentro || dentro(t.W[0][0], t.W[0][1]));
+      return m.iniciarHidroponia({ THREE, T3, techos, movil }); }).then(h => { HIDRO = h; if (h) h.ver(!!PREN.E8); return h; }).catch(er => console.warn('huertas hidropónicas:', er));
   };
   for (const e of D.estrategias) {
     const gr = new THREE.Group(); gr.visible = false; grupo.add(gr); // al iniciar, todas apagadas
@@ -142,7 +162,7 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
   });
   return {
     lista,
-    ver: (id, on) => { PREN[id] = on; conexiones(); const k = CAPA[id]; if (!k) return; if (on && !k.lista) { armar(k.e, k.gr); k.lista = true; } k.gr.visible = on; },
+    ver: (id, on) => { PREN[id] = on; conexiones(); if (id === 'E8') hidroponia(on); const k = CAPA[id]; if (!k) return; if (on && !k.lista) { armar(k.e, k.gr); k.lista = true; } k.gr.visible = on; },
     marcar: (id, on) => { PREN[id] = on; conexiones(); }, // E1 y E3 tienen su propio plan: solo cuentan para las conexiones
     // sitios de huerta en el suelo (lotes baldíos) para las colmenas y lombrices de la red biótica
     sitios: () => { const e = D.estrategias.find(x => x.id === 'E8'); const c = e && e.capas.find(x => /baldío/i.test(x.n)); return c ? c.lotes.map(l => ({ id: 'E8', n: 'Huerta en lote baldío', poly: W2(l) })) : []; }

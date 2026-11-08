@@ -27,6 +27,10 @@ def propios():
     for t in B['tanques']: P.append(Point(t).buffer(9))
     return P
 
+def propios_suelo():  # se recorta solo lo que Google levanta (palmas y edificio derretidos), no la foto del piso: nivel de edificio genérico
+    T = json.load(open(os.path.join(D, 'tintal.json'), encoding='utf-8'))  # Biblioteca El Tintal y su plaza de palmas (data3d/tintal.js)
+    return [Polygon(T['zona_modelo'])]
+
 def mascara(B, salida):
     im = Image.new('L', (W, H), 255)
     dr = ImageDraw.Draw(im)
@@ -40,6 +44,8 @@ def mascara(B, salida):
         poly = [(x / R, (YM - y) / R) for x, y in p]
         dr.polygon(poly, fill=100, outline=100, width=2)  # el borde agranda cada huella ~2,5 m, como antes
         n += 1
+    for pg in propios_suelo():
+        dr.polygon([(x / R, (YM - y) / R) for x, y in pg.exterior.coords], fill=100, outline=100, width=1)
     for pg in propios():
         dr.polygon([(x / R, (YM - y) / R) for x, y in pg.exterior.coords], fill=0, outline=0, width=1)
     im.save(salida, optimize=True)

@@ -862,7 +862,7 @@ const DIA = { // ambiente de día soleado (se usa al crear la escena y al volver
   hemiCielo: 0xb4d3ff, hemiSuelo: 0x7a6f4a, hemi: REALISTA ? 1.15 : 0.86, // luz de cielo azulada arriba y rebote cálido del suelo
   solColor: 0xffe6bf, sol: REALISTA ? 2.5 : 3.0, exposicion: 1.0 // sol cálido y fuerte: más contraste entre luz y sombra
 };
-if (KEN) Object.assign(DIA, { niebla: 0xc7d3de, densNiebla: 0.000075, hemiCielo: 0xcfe2ff, hemiSuelo: 0x9a8f72, hemi: 1.45, solColor: 0xfff0d6, sol: 2.7, exposicion: 1.05 }); // luz del giro de Unreal: media mañana clara, sombras abiertas y bruma luminosa
+if (KEN) Object.assign(DIA, { niebla: 0xa7b9c6, densNiebla: 0.000036, hemiCielo: 0xcfe2ff, hemiSuelo: 0x9a8f72, hemi: 1.45, solColor: 0xfff0d6, sol: 2.7, exposicion: 1.05 }); // luz del giro de Unreal: media mañana clara, sombras abiertas; bruma azul grisácea y tenue: a 12 km los cerros conservan su verde (antes la bruma 0xc7d3de, más densa, los volvía blancos)
 const LC = { x: 5341.33, y: 3161.9 };
 const lw = (x, y) => [x - LC.x, LC.y - y]; // z invertido: el territorio estaba en espejo (norte/sur al revés)
 window.REN3D = { get T3() { return T3; }, lw, get traf() { return TRAF; }, get peat() { return PEAT; }, get aves() { return AVES; }, get pajaro() { return PAJARO; } }; // acceso para pruebas
@@ -909,7 +909,7 @@ async function crearMallaGoogle(T) {
   tiles.setCamera(T.camera);
   tiles.setResolutionFromRenderer(T.camera, T.renderer);
   // carga progresiva: se empieza con poco detalle (aparecen enseguida los edificios en 3D) y se afina por etapas cuando termina cada una
-  T.errMeta = GOOGLE ? (T.movil ? 14 : 4) : REALISTA ? (T.movil ? 16 : 5) : KEN ? (T.movil ? 20 : 8) : (T.movil ? 28 : 14); // modo Kennedy: la foto del suelo es lo que más se ve, se pide más nítida // realista: contexto de Google nítido, como en God's Eye // meta: menor = más nítido (fachadas) pero más descarga
+  T.errMeta = GOOGLE ? (T.movil ? 14 : 4) : REALISTA ? (T.movil ? 16 : 5) : KEN ? (T.movil ? 14 : 4) : (T.movil ? 28 : 14); // modo Kennedy: la foto del suelo es lo que más se ve, se pide más nítida // realista: contexto de Google nítido, como en God's Eye // meta: menor = más nítido (fachadas) pero más descarga
   tiles.errorTarget = 56;
   T.tilesErr = 0; T.tilesT0 = performance.now(); T.mallaMostrada = false;
   tiles.addEventListener('load-error', (e) => { // antes los errores de Google se perdían en silencio
@@ -930,7 +930,7 @@ async function crearMallaGoogle(T) {
   // la foto ya trae su luz y sus sombras: se muestra tal cual (emisiva), sin que el sol de la escena la aplaste ni la queme
   // máscara de huellas del modelo: donde hay un edificio propio se recorta lo que Google levanta (su versión "derretida") y queda solo su foto del suelo
   T.maskU = { uGrade: { value: REALISTA && !GOOGLE ? new THREE.Vector4(1.2, 0.9, 1.22, 1) : new THREE.Vector4(1, 1, 1, 0) }, uTint: { value: REALISTA && !GOOGLE ? new THREE.Vector3(1.04, 1.0, 0.93) : new THREE.Vector3(1, 1, 1) }, // saturación, contraste, brillo, quitar bruma · tinte
-    uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 }, uEmpuje: { value: KEN ? 18 : 0 }, // Kennedy: la foto de Google va siempre DETRÁS de lo propio (ver project_vertex)
+    uMask: { value: null }, uOn: { value: 0 }, uLC: { value: new THREE.Vector2(LC.x, LC.y) }, uDim: { value: new THREE.Vector2(1 / MASK.XM, 1 / MASK.YM) }, uCut: { value: 2.5 }, uEmpuje: { value: KEN ? 18 : 0 }, uMonte: { value: KEN ? 1 : 0 }, // Kennedy: la foto de Google va siempre DETRÁS de lo propio (ver project_vertex)
     uZona: { value: new THREE.Vector3(ZONA.x - LC.x, LC.y - ZONA.y, ZON ? (KEN ? Math.max(ZONA.r, 2400) : ZONA.r) : 1e9) } }; // Kennedy: el recorte llega también a Corabastos y Bavaria (en celular el radio de carga es menor) // fuera de la zona: malla de Google tal cual
   const recorte = (m) => {
     m.onBeforeCompile = (sh) => {
@@ -943,7 +943,7 @@ async function crearMallaGoogle(T) {
         // la cámara (la imagen no cambia: mismo punto en pantalla), así los edificios, carros, árboles y animales propios quedan siempre encima
         .replace('#include <project_vertex>', '#include <project_vertex>\nif (uEmpuje > 0.0) { float dl = max(length(mvPosition.xyz), 1.0); vec4 pE = projectionMatrix * vec4(mvPosition.xyz * (1.0 + uEmpuje / dl), 1.0); gl_Position.z = min(pE.z / pE.w, 0.99999) * gl_Position.w; }');
       sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim; uniform vec4 uGrade; uniform vec3 uTint, uZona;')
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWPm; uniform sampler2D uMask; uniform float uOn, uCut; uniform vec2 uLC, uDim; uniform vec4 uGrade; uniform vec3 uTint, uZona; uniform float uMonte;')
         // gradación tipo render de maqueta (Umbra): quita la bruma gris de la foto aérea, sube saturación y contraste y la calienta un poco
         .replace('#include <opaque_fragment>', `{
           vec3 c = max(outgoingLight - uGrade.w * vec3(0.030, 0.036, 0.048), 0.0) / (1.0 - uGrade.w * 0.04);
@@ -952,6 +952,13 @@ async function crearMallaGoogle(T) {
           c += uGrade.w * vec3(0.026, 0.032, 0.046) * (1.0 - smoothstep(0.0, 0.16, l)); // sombras abiertas y azuladas (luz de cielo), no negras
           c = pow(c / 0.18, vec3(uGrade.y)) * 0.18 * uGrade.z * uTint;
           outgoingLight = mix(outgoingLight, c, 1.0 - smoothstep(uZona.z, uZona.z + 350.0, distance(vWPm.xz, uZona.xy))); // afuera de la zona, la foto tal cual
+          if (uMonte > 0.5) { // cerros: la foto aérea de lejos sale lavada (bruma de la toma): se le quita el velo y se recupera el verde del bosque y el páramo
+            float alto = smoothstep(25.0, 140.0, vWPm.y) * smoothstep(1500.0, 4500.0, distance(vWPm.xz, uZona.xy));
+            vec3 m = max(outgoingLight - vec3(0.055, 0.06, 0.07), 0.0) * 1.12;
+            float lm = dot(m, vec3(0.2126, 0.7152, 0.0722));
+            m = max(mix(vec3(lm), m, 1.45), 0.0) * vec3(0.9, 1.07, 0.86);
+            outgoingLight = mix(outgoingLight, m, alto);
+          }
         }
         #include <opaque_fragment>`)
         .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
@@ -1259,9 +1266,12 @@ async function initTodoReal() {
     const pCora = GOOGLE ? Promise.resolve(null) : window.cargarJSON('data3d/corabastos.json?v=3').catch(() => null);
     const deCora = (CO, b) => { if (!CO) return false; const p = b.pts, n = p.length - 1; let x = 0, y = 0; for (let i = 0; i < n; i++) { x += p[i][0]; y += p[i][1]; } x /= n; y /= n;
       return CO.naves.some(v => { const dx = x - v.c[0], dy = y - v.c[1], u = dx * Math.cos(v.a) + dy * Math.sin(v.a), w = -dx * Math.sin(v.a) + dy * Math.cos(v.a); return Math.abs(u) < v.L / 2 + 1 && Math.abs(w) < v.W / 2 + 1; }); };
-    const cargarEdif = async (f) => { const [BV, CO] = await Promise.all([pBav, pCora]); return decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer()).filter(b => enZona(b.pts[0][0], b.pts[0][1]) && !deBavaria(BV, b) && !deCora(CO, b)); }; // vista realista: solo la zona del proyecto
+    // Biblioteca El Tintal y su plaza: modelo propio (data3d/tintal.js); sus cajas genéricas se quitan
+    const pTin = KEN ? window.cargarJSON('data3d/tintal.json?v=1').catch(() => null) : Promise.resolve(null);
+    const deTintal = (TI, b) => { if (!TI) return false; const p = b.pts, n = p.length - 1; let x = 0, y = 0; for (let i = 0; i < n; i++) { x += p[i][0]; y += p[i][1]; } return enPoli(TI.zona_modelo, x / n, y / n); };
+    const cargarEdif = async (f) => { const [BV, CO, TI] = await Promise.all([pBav, pCora, pTin]); return decodificarEdificios(EI, await (await fetch('data3d/edif/' + f)).arrayBuffer()).filter(b => enZona(b.pts[0][0], b.pts[0][1]) && !deBavaria(BV, b) && !deCora(CO, b) && !deTintal(TI, b)); }; // vista realista: solo la zona del proyecto
     const agregarHuellas = () => {}; // la máscara de huellas ya viene precalculada (data3d/edif/mascara*.png)
-    if (!GOOGLE && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png' : 'mascara.png'); });
+    if (!GOOGLE && !(LIVIANO && !MEDIO)) pMalla.then(() => { if (T3.maskU) cargarMascara(T3, LIVIANO ? 'mascara_humedal.png?v=3' : 'mascara.png?v=3'); });
     let B = [];
     // edificios 3D propios (huellas y alturas reales) también en la vista fotorrealista: la malla de Google en Kennedy los trae
     // casi planos ("derretidos"); como en las maquetas de Umbra, se levantan volúmenes limpios y el techo toma el color de la foto aérea
@@ -1608,10 +1618,10 @@ function materialEdificios(THREE) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, T3.roofU);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec4 wall;\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpv = modelMatrix * vec4(position, 1.0); vWP = wpv.xyz; vWs = wpv.xz; vWl = wall;');
+      .replace('#include <common>', '#include <common>\nattribute vec4 wall;\nattribute float bord;\nvarying float vBd;\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvec4 wpv = modelMatrix * vec4(position, 1.0); vWP = wpv.xyz; vWs = wpv.xz; vWl = wall; vBd = bord;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn, uNoche, uLuces;' + (FACHADA ? '\nuniform sampler2D tFachB, tFachP, tFachBN, tFachPN, tFachBR, tFachPR, tLadC, tLadN, tLadR;\nuniform float uLadOn;' : ''))
+      .replace('#include <common>', '#include <common>\nflat varying vec4 vWl;\nflat varying vec2 vWs;\nvarying vec3 vWP;\nvarying float vBd;\nuniform sampler2D uOrto;\nuniform mat4 uOrtoVP;\nuniform float uOrtoOn, uNoche, uLuces;' + (FACHADA ? '\nuniform sampler2D tFachB, tFachP, tFachBN, tFachPN, tFachBR, tFachPR, tLadC, tLadN, tLadR;\nuniform float uLadOn;' : ''))
       .replace('#include <color_fragment>', `#include <color_fragment>
       vec2 gTuv = vec2(0.0), gUvM = vec2(0.0); float gLad = 0.0, gF = 0.0, gMuro = 0.0, gWin = 0.0; vec3 gWinC = vec3(0.0); // coordenadas de la fachada, para la rugosidad y las normales PBR
       {
@@ -1658,6 +1668,12 @@ function materialEdificios(THREE) {
               diffuseColor.rgb = mix(diffuseColor.rgb, foto.rgb * 1.08, foto.a * borde);
             }
           }
+        }
+        if (vBd >= 0.0) { // remate ancho del antepecho: franja clara de 0,75 m a lo largo del borde del techo y su línea de sombra hacia adentro
+          vec2 da = dFdx(vWP.xz), db = dFdy(vWP.xz); float tx = dFdx(vBd), ty = dFdy(vBd), det = da.x * db.y - da.y * db.x;
+          if (abs(det) > 1e-8) { vec2 gr = vec2(tx * db.y - ty * da.y, da.x * ty - db.x * tx) / det; float dist = (1.0 - vBd) / max(length(gr), 1e-4), aa = max(fwidth(dist), 0.02);
+            float rim = 1.0 - smoothstep(0.75 - aa, 0.75 + aa, dist), somb = (1.0 - smoothstep(0.75, 1.2, dist)) * (1.0 - rim);
+            diffuseColor.rgb = mix(diffuseColor.rgb * (1.0 - 0.3 * somb), vec3(0.80, 0.78, 0.74), rim); }
         }
         ${KEN ? '{ float lk = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.86, 0.76) * (0.62 + 0.5 * lk), 0.42); } // modo Kennedy: fachadas claras como el render de Unreal' : ''}
         diffuseColor.rgb *= 1.0 - 0.32 * uNoche; // de noche los muros se apagan y resaltan las ventanas encendidas
@@ -1733,7 +1749,7 @@ function buildChunks(THREE, B) {
   if (!T3.edificios) T3.edificios = [];
   const techosHuerta = []; // Kennedy: terrazas de los edificios de más de 5 pisos (>= 6 pisos de 3 m) que se vuelven huerta
   for (const list of cells.values()) {
-    const P = [], C = [], I = [], WL = [];
+    const P = [], C = [], I = [], WL = [], BDc = [], BDr = [];
     let vc = 0;
     for (const bi of list) {
       const b = B[bi], h = b.h, ring = b.pts.slice(0, -1), n = ring.length;
@@ -1762,9 +1778,13 @@ function buildChunks(THREE, B) {
         // los dos triángulos del muro terminan en la esquina superior i: así ambos leen el mismo muro (vértice "provocador")
         I.push(base + i, base + j, base + n + i, base + j, base + n + j, base + n + i);
       }
-      // techo triangulado por el contorno real (el abanico desde el centro se salía en huellas cóncavas)
+      // techo: si la huella es 'estrella' respecto a su centro, abanico desde el centro (así el shader sabe qué tan cerca del borde está cada punto y pinta el remate ancho del antepecho);
+      // si no, triangulado por el contorno real (el abanico se salía en huellas cóncavas)
+      let estrella = REALISTA && !LIVIANO && h >= 4.5, sg = 0;
+      if (estrella) for (let i = 0; i < n; i++) { const p = W[i], q = W[(i + 1) % n], cr = (p[0] - cx) * (q[1] - cz) - (p[1] - cz) * (q[0] - cx); if (Math.abs(cr) < 1e-6 || (sg && Math.sign(cr) !== sg)) { estrella = false; break; } sg = Math.sign(cr); }
       let tri = [];
-      try { tri = THREE.ShapeUtils.triangulateShape(W.map(q => new THREE.Vector2(q[0], q[1])), []); } catch (e) {}
+      if (estrella) { BDc.push(base + 2 * n); for (let i = 0; i < n; i++) BDr.push(base + 2 * n + 1 + i); }
+      else try { tri = THREE.ShapeUtils.triangulateShape(W.map(q => new THREE.Vector2(q[0], q[1])), []); } catch (e) {}
       if (tri.length) { for (const t of tri) I.push(base + 2 * n + 1 + t[0], base + 2 * n + 1 + t[1], base + 2 * n + 1 + t[2]); }
       else for (let i = 0; i < n; i++) I.push(base + 2 * n, base + 2 * n + 1 + i, base + 2 * n + 1 + (i + 1) % n);
       vc = base + 3 * n + 1;
@@ -1775,6 +1795,7 @@ function buildChunks(THREE, B) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3));
     g.setAttribute('wall', new THREE.Float32BufferAttribute(WL, 4));
+    { const bd = new Float32Array(P.length / 3).fill(-1); for (const k of BDc) bd[k] = 0; for (const k of BDr) bd[k] = 1; g.setAttribute('bord', new THREE.BufferAttribute(bd, 1)); } // 0 en el centro del techo, 1 en su borde
     g.setIndex(I);
     g.computeVertexNormals();
     const bm = new THREE.Mesh(g, mat);
@@ -3260,11 +3281,14 @@ $('b-hd').onclick = async () => {
 
 if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
   const listoK = () => T3 && T3.ready && T3.net ? Promise.resolve() : new Promise(r => setTimeout(() => r(listoK()), 400));
+  // Biblioteca El Tintal (modelo propio) y canchas reales de OpenStreetMap: no dependen de la simulación, se cargan en paralelo
+  listoK().then(() => import('./data3d/tintal.js?v=1')).then(m => m.iniciarTintal({ THREE: T3.THREE, T3, OX: 2095.67, OZ: -109.06, Y0: 0, movil: MOVIL })).catch(e => console.warn('Biblioteca El Tintal:', e));
+  listoK().then(() => import('./data3d/canchas.js?v=1')).then(m => m.iniciarCanchas({ THREE: T3.THREE, T3, OX: 2095.67, OZ: -109.06, Y0: 0, movil: MOVIL })).catch(e => console.warn('canchas:', e));
   const FAUNA_RED = ['tingua', 'garza', 'pato', 'monjita', 'copeton', 'mirla', 'colibri']; // las mueve la red biótica
   let EST = null; // estrategias de la propuesta (data3d/estrategias.js): reemplazan las convenciones P1-P4
-  Promise.all([import('./data3d/giro_sim.js?v=21'), import('./data3d/estrategias.js?v=7'), listoK()])
+  Promise.all([import('./data3d/giro_sim.js?v=21'), import('./data3d/estrategias.js?v=8'), listoK()])
     .then(async ([m, me]) => {
-      try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0 }); } catch (e) { console.warn('estrategias:', e); }
+      try { EST = await me.iniciarEstrategias({ THREE: T3.THREE, T3, lw, Y0: 2.0, movil: MOVIL, dentro: (x, z) => enZona(x + LC.x, LC.y - z) /* huertas hidropónicas solo donde está el modelo de edificios */ }); } catch (e) { console.warn('estrategias:', e); }
       let PLAN = null; // E1 Bavaria Común: plan maestro de la antigua fábrica (data3d/bavaria_plan.js)
       try { PLAN = await (await import('./data3d/bavaria_plan.js?v=5')).iniciarPlanBavaria({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 }); T3.planBavaria = PLAN; } catch (e) { console.warn('plan Bavaria:', e); }
       let CPLAN = null; // E3 Corabastos reducido: transformación de la central (data3d/corabastos_plan.js)
@@ -3275,7 +3299,7 @@ if (KEN) { // simulación de Kennedy (data3d/giro_sim.js) dentro de la maqueta
     .then(() => { // botón para apagar y prender la foto 3D de Google (el suelo de base)
       const ag = document.getElementById('gs-ag');
       if (ag && !document.getElementById('fb-btn')) { const b = document.createElement('button'); b.id = 'fb-btn'; b.className = 'on'; b.textContent = 'Foto base'; b.title = 'Apaga o prende la foto 3D de Google (el suelo de base)'; b.style.cssText = 'width:100%;margin-top:6px'; b.onclick = () => { const on = !b.classList.contains('on'); b.classList.toggle('on', on); if (T3.tiles) T3.tiles.group.visible = on; }; ag.parentElement.insertAdjacentElement('afterend', b); }
-      return import('./data3d/cielo.js?v=3');
+      return import('./data3d/cielo.js?v=4');
     }).then(m => { T3.cielo = m.iniciarCielo({ THREE: T3.THREE, T3, luzMalla }); }) // cielo y luz de 24 horas con el reloj de la simulación
     .then(() => import('./data3d/biotica.js?v=12')).then(m => m.iniciarBiotica({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0, movil: MOVIL, huertas: EST ? EST.sitios() : null }))
     .then(() => import('./data3d/actores.js?v=7')).then(m => m.iniciarActores({ THREE: T3.THREE, T3, lw, OX: 2095.67, OZ: -109.06, Y0: 2.0 })).then(a => { T3.actores = a; }) // capa de redes de actores (9 estrategias del Excel)
