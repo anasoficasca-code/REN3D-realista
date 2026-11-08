@@ -1,11 +1,11 @@
 /* ============ ESTRATEGIAS DE LA PROPUESTA (modo Kennedy) ============
    Nombres y numeración del Excel de las 9 estrategias; ubicaciones de data3d/estrategias.json (tools/estrategias_build.py):
    E3 Corabastos reducido (Corabastos) · E4 Orgánicos y hongos (distrito biotecnológico) · E5 Corredor biótico (humedales)
-   E8 Red de huertas (huertas en lotes baldíos, en cubiertas de vivienda en altura y en viviendas, del shapefile de lotes).
+   E8 Red distribuida de producción alimentaria (huertas en lotes baldíos, en cubiertas de vivienda en altura y en viviendas, del shapefile de lotes).
    E1 Bavaria Común la dibuja data3d/bavaria_plan.js. E2, E6, E7 y E9 no tienen una ubicación única: desde la leyenda se abre su
    red de actores. Las capas sobre techos (cubiertas, viviendas) se pintan a la altura de cada edificio; las demás a ras del suelo. */
 export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
-  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=4');
+  const D = await (window.cargarJSON || ((u) => fetch(u).then(r => r.json())))('data3d/estrategias.json?v=5');
   const esc = D.escala || 0.5, grupo = new THREE.Group(); grupo.name = 'estrategias'; T3.scene.add(grupo);
   const CAPA = {};
   const W2 = (flat) => { const n = flat.length / 2, W = []; for (let k = 0; k < n; k++) W.push(lw(flat[k * 2] * esc, flat[k * 2 + 1] * esc)); return W; };
@@ -75,7 +75,7 @@ export async function iniciarEstrategias({ THREE, T3, lw, Y0 = 2.0 }) {
      Arcos entre los lugares de dos estrategias relacionadas; se ven cuando las dos están prendidas. Pulsos de origen a destino
      (en las dos direcciones si la relación es ↔) y una etiqueta con el mecanismo que se investigará. */
   const PREN = {};
-  const [AC, BVd] = await Promise.all(['data3d/actores.json?v=2', 'data3d/bavaria.json?v=2'].map(u => (window.cargarJSON || ((x) => fetch(x).then(r => r.json())))(u).catch(() => null)));
+  const [AC, BVd] = await Promise.all(['data3d/actores.json?v=3', 'data3d/bavaria.json?v=2'].map(u => (window.cargarJSON || ((x) => fetch(x).then(r => r.json())))(u).catch(() => null)));
   const cruces = (AC && AC.doc && AC.doc.cruces) || [];
   const cent = (W) => { let x = 0, z = 0; for (const q of W) { x += q[0]; z += q[1]; } return [x / W.length, z / W.length]; };
   const REP = {}; // puntos representativos de cada estrategia (en el mundo)
